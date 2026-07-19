@@ -114,7 +114,13 @@ export interface SourceMeta {
   /** PDF: ar sukalibruotas mastelis */
   scaleCalibrated?: boolean;
   /** PDF: projekto failų sąrašas su kalibravimo būsena */
-  pdfFiles?: Array<{ id: string; name: string; discipline: string; calibrated: boolean }>;
+  pdfFiles?: Array<{
+    id: string; name: string; discipline: string; calibrated: boolean;
+    /** Rankiniu būdu sukalibruota vienetų/m */
+    upm?: number | null;
+    /** Automatiškai aptikta vienetų/m (iš mastelio žymos + lapo formato) */
+    detectedUpm?: number | null;
+  }>;
   /** DXF: sluoksniai, nepriskirti jokiai kategorijai */
   unassignedLayers?: string[];
   /** DXF: vienetų koeficientas į metrus */

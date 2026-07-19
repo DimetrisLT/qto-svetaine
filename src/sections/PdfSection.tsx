@@ -11,6 +11,7 @@ interface PdfFileEntry {
   file: File;
   discipline: string;
   unitsPerMeter: number | null;
+  detectedUpm: number | null;
 }
 
 interface Props {
@@ -33,6 +34,7 @@ export default function PdfSection({ items, onData }: Props) {
       scaleCalibrated: nextFiles.every((f) => f.unitsPerMeter !== null),
       pdfFiles: nextFiles.map((f) => ({
         id: f.id, name: f.name, discipline: f.discipline, calibrated: f.unitsPerMeter !== null,
+        upm: f.unitsPerMeter, detectedUpm: f.detectedUpm,
       })),
     });
   };
@@ -44,6 +46,7 @@ export default function PdfSection({ items, onData }: Props) {
       file,
       discipline: detectDiscipline(file.name),
       unitsPerMeter: null,
+      detectedUpm: null,
     };
     const next = [...files, entry];
     setFiles(next);
@@ -72,6 +75,17 @@ export default function PdfSection({ items, onData }: Props) {
     const nextFiles = files.map((f) => (f.id === id ? { ...f, unitsPerMeter: upm } : f));
     setFiles(nextFiles);
     emit(items, nextFiles);
+  };
+
+  const setDetectedScale = (id: string, upm: number | null) => {
+    setFiles((prev) => {
+      // Pirmas aptiktas mastelis „laimi“ – neperrašome kaskart iš naujo
+      const target = prev.find((f) => f.id === id);
+      if (!target || target.detectedUpm !== null || upm === null) return prev;
+      const nextFiles = prev.map((f) => (f.id === id ? { ...f, detectedUpm: upm } : f));
+      emit(items, nextFiles);
+      return nextFiles;
+    });
   };
 
   const activeItems = useMemo(() => items.filter((i) => i.pdfFile === activeId), [items, activeId]);
@@ -156,6 +170,7 @@ export default function PdfSection({ items, onData }: Props) {
           discipline={active.discipline}
           unitsPerMeter={active.unitsPerMeter}
           onCalibrate={(upm) => setCalibration(active.id, upm)}
+          onDetectScale={(upm) => setDetectedScale(active.id, upm)}
           items={activeItems}
           onItemsChange={handleItemsChange}
         />

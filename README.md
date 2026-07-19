@@ -79,6 +79,16 @@ Kiekviena žiniaraščio eilutė pažymėta kilmės žyma:
 
 Žymos matomos žiniaraštyje, detalioje suvestinėje ir Excel failo lapuose (stulpelis **„Kilmė“**).
 
+### Mastelis: automatinis aptikimas ir tikrinimas
+
+- Jei PDF turi teksto sluoksnį su mastelio žyma (pvz., „M1:100“ antraštės bloke), programa **pati pasiūlo mastelį** (žalias pranešimas) – pakanka spausti „Taikyti šį mastelį“.
+- Jei teksto sluoksnio nėra (skenuoti brėžiniai), bet lapas atitinka standartinį formatą (A3…), rodomi **apytikslio mastelio mygtukai** (1:50 / 1:100 / 1:200). Dėmesio: brėžinys gali būti spausdintas „talpinant į lapą“ – tuomet apytikslis mastelis klysta keliais procentais, todėl būtinai patikrinkite vienu žinomu matmeniu.
+- Jei rankinė kalibracija **nukrypsta >2 %** nuo brėžinyje nurodyto mastelio – programa įspėja (ir ataskaitos savikontrolėje, ir iškart).
+
+### Tikslus žymėjimas (prisirišimas / snapping)
+
+Vektoriniuose PDF (CAD eksportai) kursorius automatiškai **prisiriša prie linijų galų, vidurio taškų ir kraštinių** – matavimai tikslūs net nepriartinus. Skenuotuose (rastriniuose) PDF vektorių nėra, todėl žymėkite kuo tiksliau arba naudokite didesnį priartimą.
+
 ### Kiti šaltiniai
 
 - **IFC kortelė** – įkelkite `.ifc` modelį; kiekiai suskaičiuojami automatiškai, matysite 3D modelį.
@@ -95,8 +105,9 @@ Kiekviena žiniaraščio eilutė pažymėta kilmės žyma:
 ## Savikontrolė
 
 Programa automatiškai tikrina:
-- **Pilnumą** – ar visi PDF failai sukalibruoti, ar visi DXF sluoksniai priskirti, ar IFC elementai turi kiekius;
+- **Pilnumą** – ar visi PDF failai sukalibruoti (ir ar kalibracija sutampa su brėžinio masteliu ±2 %), ar visi DXF sluoksniai priskirti, ar IFC elementai turi kiekius;
 - **Geometriją** – IFC deklaruoti tūriai lyginami su tūriais iš 3D geometrijos (±20 %), perdangų plotas su patalpų plotu;
+- **Dvigubą skaičiavimą** – tos pačios kategorijos plotų persidengimai (>10 %), sutampantys ilgiai skirtingose projekto dalyse (A ↔ SK, ±5 %), vnt. kiekių neatitiktys tarp plano ir projekto žiniaraščio (OCR);
 - **Logiką** – nuliniai/neigiami matmenys, trūkstamos medžiagos.
 
 ## Technologijos

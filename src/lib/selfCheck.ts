@@ -1,6 +1,8 @@
 // Savikontrolės patikrinimai: geometrija, logika, pilnumas
 import { CATEGORY_INFO, type CheckResult, type QtoItem, type SourceMeta } from '@/types/qto';
 import { fmt } from '@/lib/format';
+import { polygonArea } from '@/lib/pdf/measure';
+import { estimateOverlapRatio } from '@/lib/geometry2d';
 
 export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResult[] {
   const checks: CheckResult[] = [];
@@ -37,9 +39,19 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
       }
       if (uncal.length > 0) {
         add('completeness', 'PDF mastelio kalibravimas', 'warn',
-          `Nesukalibruoti failai: ${uncal.map((f) => `„${f.name}“`).join(', ')}. Kiekvienam failui sukalibruokite mastelį dviejų žinomų taškų atstumu.`);
+          `Nesukalibruoti failai: ${uncal.map((f) => `„${f.name}“`).join(', ')}. Kiekvienam failui sukalibruokite mastelį dviejų žinomų taškų atstumu arba taikykite automatiškai aptiktą mastelį.`);
       } else if (files.length > 0) {
         add('completeness', 'PDF mastelio kalibravimas', 'ok', 'Visiems PDF failams mastelis sukalibruotas.');
+      }
+      // Rankinės kalibracijos neatitiktis automatiškai aptiktam masteliui
+      const deviating = files.filter((f) =>
+        f.upm && f.detectedUpm && Math.abs(f.upm - f.detectedUpm) / f.detectedUpm > 0.02);
+      if (deviating.length > 0) {
+        add('completeness', 'PDF mastelio neatitiktis', 'warn',
+          `Rankinė kalibracija nukrypsta >2 % nuo brėžinyje nurodyto mastelio: ${deviating.map((f) => `„${f.name}“ (${fmt(Math.abs(f.upm! - f.detectedUpm!) / f.detectedUpm! * 100, 1)} %)`).join(', ')}. Patikrinkite etaloną arba taikykite aptiktą mastelį.`);
+      } else if (files.some((f) => f.upm && f.detectedUpm)) {
+        add('completeness', 'PDF mastelio sutapimas', 'ok',
+          'Kalibracija sutampa su brėžinyje nurodytu masteliu (±2 %).');
       }
     }
     if (m.source === 'DXF') {
@@ -120,6 +132,75 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   const ai = items.length - proj;
   add('completeness', 'Kiekių kilmė', 'ok',
     `Projekto duomenys: ${proj} poz.; skaičiuota AI: ${ai} poz. Žiniaraštyje jos pažymėtos atskirai.`);
+
+  // --- DVIGUBO SKAIČIAVIMO KONTROLĖ ---
+  // 4) To paties failo/puslapio/kategorijos plotų persidengimai
+  const areaItems = items.filter((i) => i.pdfPoints && i.pdfKind === 'area' && i.pdfPoints.length >= 3);
+  const overlapPairs: Array<{ a: QtoItem; b: QtoItem; ratio: number }> = [];
+  for (let x = 0; x < areaItems.length; x++) {
+    for (let y = x + 1; y < areaItems.length; y++) {
+      const A = areaItems[x], B = areaItems[y];
+      if (A.category !== B.category || A.pdfFile !== B.pdfFile || A.pdfPage !== B.pdfPage) continue;
+      const ratio = estimateOverlapRatio(A.pdfPoints!, B.pdfPoints!, polygonArea(A.pdfPoints!), polygonArea(B.pdfPoints!));
+      if (ratio > 0.1) overlapPairs.push({ a: A, b: B, ratio });
+    }
+  }
+  if (overlapPairs.length > 0) {
+    add('geometry', 'Plotų persidengimas (dvigubas skaičiavimas?)', 'warn',
+      `${overlapPairs.length} porų tos pačios kategorijos plotai persidengia >10 %: ${overlapPairs.slice(0, 3).map((p) => `„${p.a.name}“ ∩ „${p.b.name}“ (${fmt(p.ratio * 100, 0)} %)`).join('; ')}${overlapPairs.length > 3 ? '…' : ''}. Patikrinkite, ar neskačiuojate tos pačios vietos dukart.`);
+  } else if (areaItems.length >= 2) {
+    add('geometry', 'Plotų persidengimas', 'ok', 'Tos pačios kategorijos išmatuoti plotai tarpusavyje reikšmingai nepersidengia.');
+  }
+
+  // 5) Tos pačios kategorijos ilgiai skirtingose projekto dalyse (A ↔ SK)
+  const byDiscCat = new Map<string, number>();
+  for (const i of items) {
+    if (!i.length_m || i.length_m <= 0 || !i.discipline) continue;
+    const key = `${i.discipline}|${i.category}`;
+    byDiscCat.set(key, (byDiscCat.get(key) ?? 0) + i.length_m);
+  }
+  const dupPairs: string[] = [];
+  const keys = [...byDiscCat.keys()];
+  for (let x = 0; x < keys.length; x++) {
+    for (let y = x + 1; y < keys.length; y++) {
+      const [dA, cA] = keys[x].split('|');
+      const [dB, cB] = keys[y].split('|');
+      if (dA === dB || cA !== cB) continue;
+      const vA = byDiscCat.get(keys[x])!, vB = byDiscCat.get(keys[y])!;
+      if (vA > 0 && vB > 0 && Math.abs(vA - vB) / Math.max(vA, vB) <= 0.05) {
+        dupPairs.push(`${CATEGORY_INFO[cA as QtoItem['category']].lt}: ${dA} ${fmt(vA)} m ≈ ${dB} ${fmt(vB)} m`);
+      }
+    }
+  }
+  if (dupPairs.length > 0) {
+    add('geometry', 'Kiekiai dubliuojasi tarp projekto dalių', 'warn',
+      `Beveik vienodi ilgiai skirtingose dalyse (±5 %): ${dupPairs.slice(0, 3).join('; ')}. Jei tai ta pati konstrukcija A ir SK brėžiniuose – palikite tik vieną šaltinį.`);
+  }
+
+  // 6) Skaičiavimo (vnt.) sutikrinimas su projekto žiniaraščiu (OCR)
+  const projCounts = new Map<string, number>();
+  const aiCounts = new Map<string, number>();
+  for (const i of items) {
+    if (i.unit !== 'vnt.') continue;
+    const map = i.origin === 'project' ? projCounts : aiCounts;
+    map.set(i.category, (map.get(i.category) ?? 0) + i.count);
+  }
+  const countMismatches: string[] = [];
+  const countMatches: string[] = [];
+  for (const [cat, pv] of projCounts) {
+    const av = aiCounts.get(cat);
+    if (av === undefined) continue;
+    const lt = CATEGORY_INFO[cat as QtoItem['category']].lt;
+    if (pv === av) countMatches.push(`${lt}: ${pv} vnt.`);
+    else countMismatches.push(`${lt}: žiniaraštyje ${pv} vnt., išmatuota plane ${av} vnt.`);
+  }
+  if (countMismatches.length > 0) {
+    add('geometry', 'Skaičiavimas nesutampa su projekto žiniaraščiu', 'warn',
+      `${countMismatches.join('; ')}. Patikrinkite, ar plane nepraleista pozicijų arba žiniaraštis neįtrauktas dukart.`);
+  } else if (countMatches.length > 0) {
+    add('geometry', 'Skaičiavimo sutikrinimas su žiniaraščiu', 'ok',
+      `Vnt. kiekiai sutampa su projekto žiniaraščiu: ${countMatches.join('; ')}.`);
+  }
 
   return checks;
 }

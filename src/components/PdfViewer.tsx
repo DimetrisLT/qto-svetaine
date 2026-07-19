@@ -8,6 +8,8 @@ import { fmt, round } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ocrCanvas, parseScheduleText, rowsToItems, type ScannedRow } from '@/lib/ocr/scanSchedule';
 import ScheduleReview from '@/components/ScheduleReview';
+import { suggestForPage, paperFromPoints, unitsPerMeterFor, deviationPct, type ScaleSuggestion } from '@/lib/pdf/scaleDetect';
+import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -38,11 +40,13 @@ interface Props {
   discipline: string;
   unitsPerMeter: number | null;
   onCalibrate: (upm: number | null) => void;
+  /** Automatiškai aptiktas mastelis (vieną kartą, pirmas sėkmingas) */
+  onDetectScale?: (upm: number | null) => void;
   items: QtoItem[];
   onItemsChange: (items: QtoItem[]) => void;
 }
 
-export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, items, onItemsChange }: Props) {
+export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onDetectScale, items, onItemsChange }: Props) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(1);
@@ -60,6 +64,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ScannedRow[] | null>(null);
   const [reviewTitle, setReviewTitle] = useState('');
+  const [scaleSuggestion, setScaleSuggestion] = useState<ScaleSuggestion | null>(null);
+  const [paperOnlyName, setPaperOnlyName] = useState<string | null>(null);
+  const [calibDeviation, setCalibDeviation] = useState<number | null>(null);
+  const detectReportedRef = useRef(false);
+  const snapIndexRef = useRef<SnapIndex | null>(null);
+  const snapRef = useRef<Pt | null>(null);
+  const [snapIndicator, setSnapIndicator] = useState<Pt | null>(null);
+  const snapPrevRef = useRef<Pt | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -110,6 +122,51 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     return () => { cancelled = true; };
   }, [pdf, pageNum, zoom]);
 
+  // Automatinis mastelio aptikimas: mastelio žyma tekste + lapo formatas
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    pdf.getPage(pageNum).then(async (page) => {
+      if (cancelled) return;
+      const viewport = page.getViewport({ scale: 1 });
+      let text = '';
+      try {
+        const tc = await page.getTextContent();
+        text = tc.items.map((it) => ('str' in it ? it.str : '')).join(' ');
+      } catch { /* nėra teksto sluoksnio */ }
+      if (cancelled) return;
+      const sug = suggestForPage(viewport.width, viewport.height, text);
+      if (sug) {
+        setScaleSuggestion(sug);
+        setPaperOnlyName(null);
+        if (!detectReportedRef.current) {
+          detectReportedRef.current = true;
+          onDetectScale?.(sug.unitsPerMeter);
+        }
+      } else {
+        const paper = paperFromPoints(viewport.width, viewport.height);
+        if (paper) setPaperOnlyName(paper.name);
+      }
+    });
+    return () => { cancelled = true; };
+    // Suggestion iš ankstesnių puslapių išlaikome – brėžinių lapuose mastelis dažniausiai vienodas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf, pageNum]);
+
+  // Vektorinių segmentų indeksas prisirišimui (snapping)
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    snapIndexRef.current = null;
+    pdf.getPage(pageNum).then(async (page) => {
+      try {
+        const segs = await extractSegments(page);
+        if (!cancelled && segs) snapIndexRef.current = new SnapIndex(segs);
+      } catch { /* vektorių nėra (skenuotas PDF) – snapping tiesiog neveikia */ }
+    });
+    return () => { cancelled = true; };
+  }, [pdf, pageNum]);
+
   const toPdfPt = (e: React.MouseEvent): Pt => {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
@@ -117,7 +174,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   const handleClick = (e: React.MouseEvent) => {
     if (tool === 'none' || form) return;
-    const p = toPdfPt(e);
+    const p = snapRef.current ?? toPdfPt(e);
     if (tool === 'calib') {
       const next = [...calibPts, p].slice(-2);
       setCalibPts(next);
@@ -211,7 +268,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const applyCalibration = () => {
     const real = parseFloat(calibInput.replace(',', '.'));
     if (calibPts.length === 2 && real > 0) {
-      onCalibrate(dist(calibPts[0], calibPts[1]) / real);
+      const upm = dist(calibPts[0], calibPts[1]) / real;
+      if (scaleSuggestion) {
+        const dev = deviationPct(upm, scaleSuggestion.unitsPerMeter);
+        setCalibDeviation(dev > 2 ? dev : null);
+      }
+      onCalibrate(upm);
       setTool('none');
     }
   };
@@ -230,11 +292,27 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (tool !== 'scan' || !scanRect) return;
-    // Vilkti pradėta tik nuspaudus – tikriname peles mygtuką
-    if (e.buttons !== 1) return;
+    if (tool === 'scan') {
+      if (!scanRect || e.buttons !== 1) return;
+      const p = toPdfPt(e);
+      setScanRect({ ...scanRect, x1: p.x, y1: p.y });
+      return;
+    }
+    // Prisirišimas (snapping) matavimo įrankiams
+    if (tool === 'none' || form) return;
+    const idx = snapIndexRef.current;
+    if (!idx) return;
     const p = toPdfPt(e);
-    setScanRect({ ...scanRect, x1: p.x, y1: p.y });
+    const s = idx.snap(p, 9 / zoom);
+    const next = s?.p ?? null;
+    snapRef.current = next;
+    const prev = snapPrevRef.current;
+    const changed = (next === null) !== (prev === null)
+      || (next && prev && (Math.abs(next.x - prev.x) > 0.5 || Math.abs(next.y - prev.y) > 0.5));
+    if (changed) {
+      snapPrevRef.current = next;
+      setSnapIndicator(next);
+    }
   };
 
   const handleMouseUp = () => {
@@ -305,6 +383,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   }
 
   const pickTool = (t: Tool) => {
+    snapRef.current = null;
+    snapPrevRef.current = null;
+    setSnapIndicator(null);
     // Ilgio / ploto matavimui mastelis būtinas – nukreipiame į kalibravimą
     if ((t === 'length' || t === 'area') && !calibrated) {
       setTool('calib');
@@ -393,22 +474,64 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             / {numPages}
           </span>
           <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
-          {current.length > 0 && (
-            <>
-              <span className="mx-1 h-5 w-px bg-border" />
-              <button onClick={finishCurrent} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-                <Check className="h-3.5 w-3.5" /> Baigti ({current.length})
-              </button>
-              <button onClick={() => setCurrent([])} className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-muted">
-                <X className="h-3.5 w-3.5" /> Valyti
-              </button>
-            </>
-          )}
+          {/* Visada rezervuojame vietą – kad brėžinys „nešoktų“ žymint pirmą tašką */}
+          <span className={cn('flex items-center gap-1.5', current.length === 0 && 'invisible')} aria-hidden={current.length === 0}>
+            <span className="mx-1 h-5 w-px bg-border" />
+            <button onClick={finishCurrent} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+              <Check className="h-3.5 w-3.5" /> Baigti ({current.length})
+            </button>
+            <button onClick={() => setCurrent([])} className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-muted">
+              <X className="h-3.5 w-3.5" /> Valyti
+            </button>
+          </span>
         </div>
 
-        {!calibrated && (
+        {!calibrated && scaleSuggestion && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+            <span>
+              📐 Aptikta: <b>{scaleSuggestion.paperName}</b> lapas, mastelis <b>1:{scaleSuggestion.scale}</b>.
+            </span>
+            <button
+              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
+              className="rounded-md bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700"
+            >
+              Taikyti šį mastelį
+            </button>
+            <span className="text-emerald-800/70 dark:text-emerald-300/70">arba sukalibruokite ranka („Mastelis“ + du žinomi taškai)</span>
+          </div>
+        )}
+        {!calibrated && !scaleSuggestion && (
+          <div className="mb-2 space-y-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <p>⚠️ Mastelis nesukalibruotas: pasirinkite „Mastelis“, spustelėkite du žinomus taškus (pvz., ašių sankirtas) ir įveskite realų atstumą metrais.</p>
+            {paperOnlyName && (
+              <p className="flex flex-wrap items-center gap-1.5">
+                <span>Lapas panašus į <b>{paperOnlyName}</b>. Apytikslis mastelis:</span>
+                {[50, 100, 200].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      const upm = unitsPerMeterFor(viewSize.w / zoom, viewSize.h / zoom, s);
+                      if (upm) onCalibrate(upm);
+                    }}
+                    className="rounded-md border border-amber-400 bg-white/60 px-2 py-0.5 font-semibold hover:bg-amber-100 dark:bg-transparent"
+                  >
+                    1:{s}
+                  </button>
+                ))}
+                <span className="text-amber-800/70 dark:text-amber-300/70">– tikslumui būtinai patikrinkite vienu žinomu matmeniu (brėžinys gali būti spausdintas „talpinant į lapą“)</span>
+              </p>
+            )}
+          </div>
+        )}
+        {calibrated && calibDeviation !== null && scaleSuggestion && (
           <p className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            ⚠️ Mastelis nesukalibruotas: pasirinkite „Mastelis“, spustelėkite du žinomus taškus (pvz., ašių sankirtas) ir įveskite realų atstumą metrais.
+            ⚠️ Rankinė kalibracija nukrypsta {fmt(calibDeviation, 1)} % nuo brėžinyje nurodyto mastelio 1:{scaleSuggestion.scale} ({scaleSuggestion.paperName}). Patikrinkite etaloną arba{' '}
+            <button
+              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
+              className="font-semibold underline"
+            >
+              taikykite aptiktą mastelį
+            </button>.
           </p>
         )}
 
@@ -442,6 +565,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 tool === 'length' && liveLength !== undefined ? `${fmt(liveLength)} m`
                   : tool === 'area' && liveArea !== undefined ? `${fmt(liveArea)} m²`
                   : tool === 'count' ? `${current.length} vnt.` : undefined)}
+              {/* Prisirišimo (snapping) indikatorius */}
+              {snapIndicator && (
+                <g pointerEvents="none">
+                  <circle cx={snapIndicator.x * zoom} cy={snapIndicator.y * zoom} r={6} fill="none" stroke="#0ea5e9" strokeWidth={2} />
+                  <line x1={snapIndicator.x * zoom - 10} y1={snapIndicator.y * zoom} x2={snapIndicator.x * zoom + 10} y2={snapIndicator.y * zoom} stroke="#0ea5e9" strokeWidth={1.5} />
+                  <line x1={snapIndicator.x * zoom} y1={snapIndicator.y * zoom - 10} x2={snapIndicator.x * zoom} y2={snapIndicator.y * zoom + 10} stroke="#0ea5e9" strokeWidth={1.5} />
+                </g>
+              )}
               {/* OCR srities rėmelis */}
               {scanRect && (
                 <rect
