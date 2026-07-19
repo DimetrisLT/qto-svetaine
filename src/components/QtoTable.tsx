@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, type QtoItem, type SourceType } from '@/types/qto';
 import { fmt } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -7,11 +7,12 @@ import { cn } from '@/lib/utils';
 interface Props {
   items: QtoItem[];
   onDelete?: (id: string) => void;
+  onEdit?: (item: QtoItem) => void;
   showSource?: boolean;
   compact?: boolean;
 }
 
-export default function QtoTable({ items, onDelete, showSource = true, compact = false }: Props) {
+export default function QtoTable({ items, onDelete, onEdit, showSource = true, compact = false }: Props) {
   const [catFilter, setCatFilter] = useState<string>('all');
   const [srcFilter, setSrcFilter] = useState<string>('all');
 
@@ -78,7 +79,7 @@ export default function QtoTable({ items, onDelete, showSource = true, compact =
               <th className="px-3 py-2 font-medium text-right">Plotas, m²</th>
               <th className="px-3 py-2 font-medium text-right">Tūris, m³</th>
               <th className="px-3 py-2 font-medium text-right">Vnt.</th>
-              {onDelete && <th className="px-2 py-2" />}
+              {(onDelete || onEdit) && <th className="px-2 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -124,15 +125,28 @@ export default function QtoTable({ items, onDelete, showSource = true, compact =
                 <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.area_m2)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.volume_m3)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{i.count}</td>
-                {onDelete && (
+                {(onDelete || onEdit) && (
                   <td className="px-2 py-1.5">
-                    <button
-                      onClick={() => onDelete(i.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                      title="Pašalinti eilutę"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <span className="flex items-center gap-1.5">
+                      {onEdit && (
+                        <button
+                          onClick={() => onEdit(i)}
+                          className="text-muted-foreground hover:text-primary"
+                          title="Redaguoti eilutę"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={() => onDelete(i.id)}
+                          className="text-muted-foreground hover:text-destructive"
+                          title="Pašalinti eilutę"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </span>
                   </td>
                 )}
               </tr>

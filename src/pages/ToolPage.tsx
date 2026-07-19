@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Building2, FileText, Layers3, ClipboardList, Download, Upload, History, CloudUpload, LogIn, LayoutGrid } from 'lucide-react';
+import { Building2, FileText, Layers3, ClipboardList, Download, Upload, History, CloudUpload, LogIn, LayoutGrid, Undo2, Redo2 } from 'lucide-react';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
 import { cn } from '@/lib/utils';
 import {
@@ -111,6 +111,7 @@ export default function ToolPage() {
     if (!f) return;
     const p = parseProjectJson(await f.text());
     if (p) {
+      pushHistory();
       const s = p.itemsBySource;
       setItemsBySource({ IFC: s.IFC ?? [], PDF: s.PDF ?? [], DXF: s.DXF ?? [] });
       setMetas({ ...EMPTY_META, ...p.metas });
@@ -118,17 +119,69 @@ export default function ToolPage() {
     }
   };
 
+  // --- Undo/redo istorija (Ctrl+Z / Ctrl+Y; sesijos metu, iki 50 žingsnių) ---
+  const undoRef = useRef<Array<Record<SourceType, QtoItem[]>>>([]);
+  const redoRef = useRef<Array<Record<SourceType, QtoItem[]>>>([]);
+  const [histTick, setHistTick] = useState(0);
+  const itemsRef = useRef(itemsBySource);
+  itemsRef.current = itemsBySource;
+
+  const pushHistory = () => {
+    undoRef.current.push(itemsRef.current);
+    if (undoRef.current.length > 50) undoRef.current.shift();
+    redoRef.current = [];
+    setHistTick((t) => t + 1);
+  };
+
+  const undo = () => {
+    const prev = undoRef.current.pop();
+    if (!prev) return;
+    redoRef.current.push(itemsRef.current);
+    setItemsBySource(prev);
+    setHistTick((t) => t + 1);
+  };
+
+  const redo = () => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push(itemsRef.current);
+    setItemsBySource(next);
+    setHistTick((t) => t + 1);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const handleData = (source: SourceType) => (items: QtoItem[], meta: SourceMeta) => {
+    if (items !== itemsRef.current[source]) pushHistory();
     setItemsBySource((s) => ({ ...s, [source]: items }));
     setMetas((s) => ({ ...s, [source]: meta }));
   };
 
   const deleteItem = (source: SourceType, id: string) => {
+    pushHistory();
     setItemsBySource((s) => ({ ...s, [source]: s[source].filter((i) => i.id !== id) }));
   };
 
   const addItems = (source: SourceType, newItems: QtoItem[]) => {
+    pushHistory();
     setItemsBySource((s) => ({ ...s, [source]: [...s[source], ...newItems] }));
+  };
+
+  const updateItem = (source: SourceType, id: string, patch: Partial<QtoItem>) => {
+    pushHistory();
+    setItemsBySource((s) => ({
+      ...s,
+      [source]: s[source].map((i) => (i.id === id ? { ...i, ...patch, id: i.id, source: i.source } : i)),
+    }));
   };
 
   const counts: Record<SourceType, number> = {
@@ -157,6 +210,24 @@ export default function ToolPage() {
             <p className="text-xs text-muted-foreground">IFC · PDF · DXF → kiekiai, savikontrolė, Excel</p>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
+            <span className={cn('flex items-center gap-0.5', histTick >= 0 && '')}>
+              <button
+                onClick={undo}
+                disabled={undoRef.current.length === 0}
+                title="Atšaukti (Ctrl+Z)"
+                className="flex items-center rounded-lg border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={redo}
+                disabled={redoRef.current.length === 0}
+                title="Grąžinti (Ctrl+Y)"
+                className="flex items-center rounded-lg border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <Redo2 className="h-3.5 w-3.5" />
+              </button>
+            </span>
             {cloudFlash && <span className="mr-1 text-xs font-medium text-emerald-600">{cloudFlash}</span>}
             {cloudName && <span className="mr-1 hidden max-w-[180px] truncate text-xs text-muted-foreground sm:inline" title="Atidarytas iš portalo">☁ {cloudName}</span>}
             {isAuthenticated ? (
@@ -278,6 +349,7 @@ export default function ToolPage() {
               metas={Object.values(metas)}
               onDeleteItem={deleteItem}
               onAddItems={addItems}
+              onUpdateItem={updateItem}
             />
           )}
           </Suspense>

@@ -4,6 +4,7 @@ import { getSessionCookieOptions } from "./lib/cookies";
 import { createRouter, authedQuery } from "./middleware";
 import { deleteUser } from "./queries/users";
 import { deleteProjectsByUser } from "./queries/projects";
+import { deleteSharesByUser } from "./queries/shares";
 
 function clearSessionCookie(ctx: { resHeaders: Headers; req: Request }) {
   const opts = getSessionCookieOptions(ctx.req.headers);
@@ -27,6 +28,7 @@ export const authRouter = createRouter({
   }),
   // BDAR „teisė būti pamirštam“: ištrina visus vartotojo projektus ir paskyrą
   deleteMe: authedQuery.mutation(async ({ ctx }) => {
+    await deleteSharesByUser(ctx.user.id);
     await deleteProjectsByUser(ctx.user.id);
     await deleteUser(ctx.user.id);
     clearSessionCookie(ctx);

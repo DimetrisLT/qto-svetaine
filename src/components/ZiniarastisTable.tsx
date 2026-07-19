@@ -42,7 +42,7 @@ export default function ZiniarastisTable({ items }: { items: QtoItem[] }) {
                   <td className="px-3 py-1.5">
                     <span
                       className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
-                      style={{ backgroundColor: CATEGORY_INFO[r.category].color }}
+                      style={{ backgroundColor: CATEGORY_INFO[r.category]?.color ?? '#9ca3af' }}
                     />
                     {r.name}
                     <span
@@ -52,9 +52,9 @@ export default function ZiniarastisTable({ items }: { items: QtoItem[] }) {
                           ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
                           : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                       )}
-                      title={ORIGIN_INFO[r.origin].lt}
+                      title={ORIGIN_INFO[r.origin]?.lt ?? 'Projekto duomenys'}
                     >
-                      {ORIGIN_INFO[r.origin].short}
+                      {ORIGIN_INFO[r.origin]?.short ?? 'proj.'}
                     </span>
                     <span className="ml-1 text-xs text-muted-foreground">({r.detailCount} eil.)</span>
                   </td>

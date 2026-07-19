@@ -5,6 +5,7 @@ import Portal from '@/pages/Portal';
 import Login from '@/pages/Login';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
+import SharedView from '@/pages/SharedView';
 import NotFound from '@/pages/NotFound';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/privatumas" element={<Privacy />} />
       <Route path="/salygos" element={<Terms />} />
+      <Route path="/v/:token" element={<SharedView />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

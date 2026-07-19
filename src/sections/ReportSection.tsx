@@ -5,6 +5,7 @@ import QtoTable from '@/components/QtoTable';
 import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
 import AssemblyPanel from '@/components/AssemblyPanel';
+import EditItemDialog from '@/components/EditItemDialog';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
@@ -15,10 +16,12 @@ interface Props {
   metas: SourceMeta[];
   onDeleteItem: (source: SourceType, id: string) => void;
   onAddItems: (source: SourceType, newItems: QtoItem[]) => void;
+  onUpdateItem: (source: SourceType, id: string, patch: Partial<QtoItem>) => void;
 }
 
-export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems }: Props) {
+export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems, onUpdateItem }: Props) {
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState<QtoItem | null>(null);
   const items = useMemo(
     () => [...itemsBySource.IFC, ...itemsBySource.PDF, ...itemsBySource.DXF],
     [itemsBySource],
@@ -82,6 +85,7 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
         <h3 className="mb-2 text-lg font-semibold">Kiekių suvestinė (detaliai)</h3>
         <QtoTable
           items={items}
+          onEdit={setEditing}
           onDelete={(id) => {
             const src = items.find((i) => i.id === id)?.source;
             if (src) onDeleteItem(src, id);
@@ -92,6 +96,19 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
       <div className={`rounded-xl border p-4 ${warns ? 'border-amber-300' : 'border-emerald-300'}`}>
         <SelfCheckPanel checks={checks} />
       </div>
+
+      {editing && (
+        <EditItemDialog
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSave={(draft) => {
+            const { id, source, ...patch } = draft;
+            if (!id || !source) return;
+            onUpdateItem(source, id, patch);
+            setEditing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

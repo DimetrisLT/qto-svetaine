@@ -75,7 +75,7 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
       row = {
         groupCode,
         category: item.category,
-        name: `${CATEGORY_INFO[item.category].lt}${mat}`,
+        name: `${CATEGORY_INFO[item.category]?.lt ?? 'Kita'}${mat}`,
         unit: item.unit,
         qty: 0,
         origin: item.origin,

@@ -21,8 +21,8 @@ export default function SummaryCards({ items }: { items: QtoItem[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
       {cards.map(({ cat, n, m2, m3, vnt }) => (
-        <div key={cat} className="rounded-xl border p-3" style={{ borderTopColor: CATEGORY_INFO[cat].color, borderTopWidth: 3 }}>
-          <p className="text-xs font-medium text-muted-foreground">{CATEGORY_INFO[cat].lt}</p>
+        <div key={cat} className="rounded-xl border p-3" style={{ borderTopColor: CATEGORY_INFO[cat]?.color ?? '#9ca3af', borderTopWidth: 3 }}>
+          <p className="text-xs font-medium text-muted-foreground">{CATEGORY_INFO[cat]?.lt ?? cat}</p>
           <p className="mt-1 text-lg font-bold tabular-nums">
             {m3 > 0 ? `${fmt(m3)} m³` : m2 > 0 ? `${fmt(m2)} m²` : `${vnt} vnt.`}
           </p>

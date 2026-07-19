@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, round } from '@/lib/format';
@@ -11,11 +11,12 @@ import ScheduleReview from '@/components/ScheduleReview';
 import { suggestForPage, paperFromPoints, unitsPerMeterFor, deviationPct, type ScaleSuggestion } from '@/lib/pdf/scaleDetect';
 import {
   TextIndex, suggestName, extractDimensions, estimateScaleFromDimensions, checkLengthAgainstDimensions,
-  type DimensionItem, type DimensionScaleEstimate,
+  type DimensionItem, type DimensionScaleEstimate, type TextItem,
 } from '@/lib/pdf/textItems';
 import { extractTextItems } from '@/lib/pdf/textItems';
 import { ocrTextItems } from '@/lib/ocr/pageText';
 import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
+import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -42,6 +43,8 @@ interface PendingForm {
   nameSuggested?: boolean;
   /** Artimiausios matmenų grandinės sutikrinimas (mm) */
   dimCheck?: { dimMm: number; ok: boolean } | null;
+  /** Ašių tinklelio zona ties elemento centroidu (pvz. „A–B / 3–4“) */
+  axesZone?: string | null;
 }
 
 interface Props {
@@ -89,6 +92,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const segsDataRef = useRef<{ count: number; data: Float32Array } | null>(null);
   const [dimScale, setDimScale] = useState<DimensionScaleEstimate | null>(null);
   const [ocrScale, setOcrScale] = useState<ScaleSuggestion | null>(null);
+  // Ašių tinklelis (#5): statomas tingiai iš segmentų + teksto (undefined = dar neieškota)
+  const axesRef = useRef<AxisGrid | null | undefined>(undefined);
+  const textItemsRef = useRef<TextItem[] | null>(null);
+  const pageSizeRef = useRef<{ w: number; h: number } | null>(null);
+  // PDF sluoksniai – Optional Content Groups (#1)
+  const ocgConfigRef = useRef<any>(null);
+  const [layers, setLayers] = useState<{ id: string; name: string; visible: boolean }[]>([]);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [layerTick, setLayerTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -103,11 +115,33 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     let cancelled = false;
     setLoadError(null);
     file.arrayBuffer().then((buf) => pdfjsLib.getDocument({ data: buf }).promise)
-      .then((doc) => {
+      .then(async (doc) => {
         if (cancelled) return;
         setPdf(doc);
         setNumPages(doc.numPages);
         setPageNum(1);
+        // PDF sluoksniai (OCG) – jei brėžinys eksportuotas su sluoksniais
+        try {
+          const cfg: any = await doc.getOptionalContentConfig();
+          if (cancelled || !cfg) return;
+          // pdf.js v5: grupių sąrašas per getOrder() (gali būti įdėtinių masyvų) + getGroup(id)
+          const flat = (a: any[]): any[] => a.flatMap((x) => (Array.isArray(x) ? flat(x) : [x]));
+          const ids: string[] = typeof cfg.getOrder === 'function' ? flat(cfg.getOrder() ?? []) : [];
+          const entries = ids
+            .map((id) => [id, cfg.getGroup?.(id)] as [string, any])
+            .filter(([, g]) => g);
+          if (entries.length === 0) return;
+          ocgConfigRef.current = cfg;
+          const vis = await Promise.all(
+            entries.map(([, g]) => Promise.resolve(cfg.isVisible?.(g)).catch(() => true).then((v) => v !== false)),
+          );
+          if (cancelled) return;
+          setLayers(entries.map(([id, g], i) => ({
+            id,
+            name: typeof g?.name === 'string' && g.name ? g.name : `Sluoksnis ${i + 1}`,
+            visible: vis[i],
+          })));
+        } catch { /* sluoksnių nėra arba API nepalaikoma – ignoruojame */ }
       })
       .catch(() => setLoadError('Nepavyko atidaryti PDF failo. Patikrinkite, ar failas nepažeistas.'));
     return () => { cancelled = true; };
@@ -129,15 +163,22 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       canvas.style.height = `${Math.floor(viewport.height)}px`;
       setViewSize({ w: viewport.width, h: viewport.height });
       const ctx = canvas.getContext('2d')!;
-      page.render({
+      const renderParams: any = {
         canvas,
         canvasContext: ctx,
         viewport,
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
-      }).promise.catch(() => undefined);
+      };
+      if (ocgConfigRef.current) {
+        // pdf.js v5: parametras yra Promise<OptionalContentConfig>
+        renderParams.optionalContentConfigPromise = Promise.resolve(ocgConfigRef.current);
+      }
+      page.render(renderParams).promise.catch(() => undefined);
     });
     return () => { cancelled = true; };
-  }, [pdf, pageNum, zoom]);
+    // layerTick – perpiešimas perjungus sluoksnio matomumą
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf, pageNum, zoom, layerTick]);
 
   // Automatinis mastelio aptikimas: mastelio žyma tekste + lapo formatas
   useEffect(() => {
@@ -176,8 +217,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     let cancelled = false;
     snapIndexRef.current = null;
     segsDataRef.current = null;
+    axesRef.current = undefined;
     pdf.getPage(pageNum).then(async (page) => {
       try {
+        const vp = page.getViewport({ scale: 1 });
+        if (!cancelled) pageSizeRef.current = { w: vp.width, h: vp.height };
         const segs = await extractSegments(page);
         if (!cancelled && segs) {
           snapIndexRef.current = new SnapIndex(segs);
@@ -194,6 +238,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     if (!pdf) return;
     let cancelled = false;
     textIndexRef.current = null;
+    textItemsRef.current = null;
+    axesRef.current = undefined;
     dimsRef.current = [];
     setDimScale(null);
     setOcrScale(null);
@@ -207,6 +253,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       }
       if (cancelled || !items) return;
       textIndexRef.current = new TextIndex(items);
+      textItemsRef.current = items;
       dimsRef.current = extractDimensions(items);
 
       if (fromOcr) {
@@ -238,6 +285,25 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
   };
 
+  // Ašių tinklelis statomas tingiai (pirmą kartą prireikus) iš segmentų + teksto žymių
+  const getAxes = (): AxisGrid | null => {
+    if (axesRef.current === undefined) {
+      const segs = segsDataRef.current;
+      const texts = textItemsRef.current;
+      const ps = pageSizeRef.current;
+      axesRef.current = segs && texts && ps
+        ? detectAxes(segs.data, segs.count, texts, ps.w, ps.h)
+        : null;
+    }
+    return axesRef.current ?? null;
+  };
+
+  const toggleLayer = (id: string, visible: boolean) => {
+    try { ocgConfigRef.current?.setVisibility(id, visible); } catch { /* ignore */ }
+    setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, visible } : l)));
+    setLayerTick((t) => t + 1);
+  };
+
   const handleClick = (e: React.MouseEvent) => {
     if (tool === 'none' || form) return;
     const p = snapRef.current ?? toPdfPt(e);
@@ -265,6 +331,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       const mm = (polylineLength(pts, false) / unitsPerMeter!) * 1000;
       dimCheck = checkLengthAgainstDimensions(dimsRef.current, pts, mm);
     }
+    // #5: ašių tinklelio zona ties elemento centroidu (pvz. „A–B / 3–4“)
+    const centroid = pts.length
+      ? { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length }
+      : null;
+    const axesZoneVal = centroid ? axisZone(getAxes(), centroid) : null;
     setForm({
       kind, pts,
       category: defCat,
@@ -275,6 +346,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       material: '',
       nameSuggested: suggested !== null,
       dimCheck,
+      axesZone: axesZoneVal,
     });
     setCurrent([]);
   };
@@ -331,7 +403,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       pdfFile: fileId,
       discipline,
       origin: 'ai',
-      note: !calibrated ? 'Mastelis nekalibruotas – reikšmės sąlyginės' : undefined,
+      note: [
+        !calibrated ? 'Mastelis nekalibruotas – reikšmės sąlyginės' : null,
+        form.axesZone ? `Ašys: ${form.axesZone}` : null,
+      ].filter(Boolean).join('; ') || undefined,
     };
     onItemsChange([...items, item]);
     setForm(null);
@@ -374,13 +449,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       setScanRect({ ...scanRect, x1: p.x, y1: p.y });
       return;
     }
-    // Prisirišimas (snapping) matavimo įrankiams
+    // Prisirišimas (snapping) matavimo įrankiams: pirmiausia ašių sankirtos, po to vektoriai
     if (tool === 'none' || form) return;
-    const idx = snapIndexRef.current;
-    if (!idx) return;
     const p = toPdfPt(e);
-    const s = idx.snap(p, 9 / zoom);
-    const next = s?.p ?? null;
+    const ax = snapToAxes(getAxes(), p, 12 / zoom);
+    const next = ax ?? snapIndexRef.current?.snap(p, 9 / zoom)?.p ?? null;
     snapRef.current = next;
     const prev = snapPrevRef.current;
     const changed = (next === null) !== (prev === null)
@@ -552,6 +625,38 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             / {numPages}
           </span>
           <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
+          {layers.length > 0 && (
+            <span className="relative">
+              <span className="mx-1 h-5 w-px bg-border" />
+              <button
+                onClick={() => setLayersOpen((o) => !o)}
+                onBlur={() => setTimeout(() => setLayersOpen(false), 150)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted',
+                  layersOpen && 'border-primary',
+                )}
+              >
+                <Layers className="h-3.5 w-3.5" /> Sluoksniai ({layers.filter((l) => l.visible).length}/{layers.length})
+              </button>
+              {layersOpen && (
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-72 overflow-auto rounded-lg border bg-popover p-1.5 shadow-lg">
+                  {layers.map((l) => (
+                    <button
+                      key={l.id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => toggleLayer(l.id, !l.visible)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
+                    >
+                      {l.visible
+                        ? <Eye className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        : <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                      <span className={cn(!l.visible && 'text-muted-foreground line-through')}>{l.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+          )}
           {/* Visada rezervuojame vietą – kad brėžinys „nešoktų“ žymint pirmą tašką */}
           <span className={cn('flex items-center gap-1.5', current.length === 0 && 'invisible')} aria-hidden={current.length === 0}>
             <span className="mx-1 h-5 w-px bg-border" />
@@ -794,6 +899,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">✨ pasiūlyta pagal artimiausią žymą brėžinyje – galite redaguoti</span>
               )}
             </label>
+            {form.axesZone && (
+              <p className="rounded-md bg-sky-50 px-2 py-1.5 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+                ⊹ Ašių zona: <b>{form.axesZone}</b> – bus įrašyta į pastabą
+              </p>
+            )}
             {form.dimCheck && (
               <p className={cn(
                 'rounded-md px-2 py-1.5 text-[11px]',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Building2, FolderOpen, LogOut, Plus, Trash2 } from 'lucide-react';
+import { Building2, FolderOpen, Link2, LogOut, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import { LOGIN_PATH } from '@/const';
@@ -22,6 +22,24 @@ export default function Portal() {
   });
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [shareUrls, setShareUrls] = useState<Record<number, string>>({});
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const shareCreate = trpc.shares.create.useMutation();
+  const shareRevoke = trpc.shares.revoke.useMutation();
+
+  const shareUrlFor = (token: string) => `${window.location.origin}/v/${token}`;
+
+  const handleShare = async (projectId: number) => {
+    const r = await shareCreate.mutateAsync({ projectId });
+    const url = shareUrlFor(r.token);
+    setShareUrls((s) => ({ ...s, [projectId]: url }));
+    try { await navigator.clipboard.writeText(url); setCopiedId(projectId); setTimeout(() => setCopiedId(null), 2000); } catch { /* clipboard nepasiekiamas */ }
+  };
+
+  const handleRevoke = async (projectId: number) => {
+    await shareRevoke.mutateAsync({ projectId });
+    setShareUrls((s) => { const n = { ...s }; delete n[projectId]; return n; });
+  };
 
   if (isLoading || !user) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Kraunama…</div>;
@@ -85,13 +103,39 @@ export default function Portal() {
               <p className="mb-3 text-xs text-muted-foreground">
                 Atnaujinta {new Date(p.updatedAt).toLocaleString('lt-LT', { dateStyle: 'short', timeStyle: 'short' })}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => navigate(`/app?project=${p.id}`)}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
                   <FolderOpen className="h-3.5 w-3.5" /> Atidaryti
                 </button>
+                {shareUrls[p.id] ? (
+                  <>
+                    <a
+                      href={shareUrls[p.id]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 rounded-lg border border-primary/50 px-3 py-1.5 text-xs font-medium text-primary"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> {copiedId === p.id ? '✓ Nukopijuota' : 'Nuoroda'}
+                    </a>
+                    <button
+                      onClick={() => handleRevoke(p.id)}
+                      className="rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive"
+                    >
+                      Atšaukti
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => handleShare(p.id)}
+                    disabled={shareCreate.isPending}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                  >
+                    <Link2 className="h-3.5 w-3.5" /> Dalintis peržiūra
+                  </button>
+                )}
                 {confirmId === p.id ? (
                   <>
                     <button
