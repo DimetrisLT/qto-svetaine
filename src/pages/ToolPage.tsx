@@ -26,6 +26,8 @@ const EMPTY_META: Record<SourceType, SourceMeta> = {
 
 export default function ToolPage() {
   const [tab, setTab] = useState<Tab>('ifc');
+  // „Rodyti brėžinyje“: žiniaraščio pozicija → PDF failas/puslapis/taškai
+  const [locateTarget, setLocateTarget] = useState<{ pdfFile: string; pdfPage: number; points: { x: number; y: number }[]; ts: number } | null>(null);
   const [itemsBySource, setItemsBySource] = useState<Record<SourceType, QtoItem[]>>({ IFC: [], PDF: [], DXF: [] });
   const [metas, setMetas] = useState<Record<SourceType, SourceMeta>>(EMPTY_META);
   // Rastas anksčiau išsaugotas darbas – siūlome tęsti (kol vartotojas nesprendžia, automatinis saugojimas pristabdytas)
@@ -184,6 +186,18 @@ export default function ToolPage() {
     }));
   };
 
+  /** „Rodyti brėžinyje“ – perjungia į PDF kortelę ir paryškina matavimą */
+  const locateItem = (item: QtoItem) => {
+    if (item.source !== 'PDF' || !item.pdfPoints?.length || !item.pdfFile) return;
+    setLocateTarget({ pdfFile: item.pdfFile, pdfPage: item.pdfPage ?? 1, points: item.pdfPoints, ts: Date.now() });
+    setTab('pdf');
+  };
+
+  const toggleVerify = (item: QtoItem) => {
+    if (!item.id) return;
+    updateItem(item.source, item.id, { verified: !item.verified });
+  };
+
   const counts: Record<SourceType, number> = {
     IFC: itemsBySource.IFC.length,
     PDF: itemsBySource.PDF.length,
@@ -323,35 +337,40 @@ export default function ToolPage() {
 
         <main>
           <Suspense fallback={<p className="rounded-xl border p-6 text-sm text-muted-foreground">Kraunama…</p>}>
-          {tab === 'ifc' && (
+          {/* Sekcijas laikome prijungtas (tik pasleptas) – kitaip perjungus skirtuką
+              būtų prarandami įkelti PDF failai ir IFC/DXF būsena */}
+          <div className={tab === 'ifc' ? '' : 'hidden'}>
             <IfcSection
               fileName={metas.IFC.fileName}
               onData={(items, meta) => { handleData('IFC')(items, meta); }}
             />
-          )}
-          {tab === 'pdf' && (
+          </div>
+          <div className={tab === 'pdf' ? '' : 'hidden'}>
             <PdfSection
               items={itemsBySource.PDF}
               onData={handleData('PDF')}
               savedFilesMeta={metas.PDF.pdfFiles}
+              locate={locateTarget}
             />
-          )}
-          {tab === 'dxf' && (
+          </div>
+          <div className={tab === 'dxf' ? '' : 'hidden'}>
             <DxfSection
               fileName={metas.DXF.fileName}
               items={itemsBySource.DXF}
               onData={handleData('DXF')}
             />
-          )}
-          {tab === 'report' && (
+          </div>
+          <div className={tab === 'report' ? '' : 'hidden'}>
             <ReportSection
               itemsBySource={itemsBySource}
               metas={Object.values(metas)}
               onDeleteItem={deleteItem}
               onAddItems={addItems}
               onUpdateItem={updateItem}
+              onLocateItem={locateItem}
+              onToggleVerify={toggleVerify}
             />
-          )}
+          </div>
           </Suspense>
         </main>
 

@@ -72,9 +72,11 @@ interface Props {
   onDetectScale?: (upm: number | null) => void;
   items: QtoItem[];
   onItemsChange: (items: QtoItem[]) => void;
+  /** „Rodyti brėžinyje“: puslapis + taškai, kuriuos reikia paryškinti */
+  locate?: { pdfPage: number; points: Pt[]; ts: number } | null;
 }
 
-export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onDetectScale, items, onItemsChange }: Props) {
+export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onDetectScale, items, onItemsChange, locate = null }: Props) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(1);
@@ -122,6 +124,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [matchProgress, setMatchProgress] = useState(0);
   const [matchThumb, setMatchThumb] = useState<string | null>(null);
   const [matchError, setMatchError] = useState<string | null>(null);
+  // „Rodyti brėžinyje“ pulsuojantis paryškinimas
+  const [locatePulse, setLocatePulse] = useState<Pt[] | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -301,10 +305,37 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     return () => { cancelled = true; };
   }, [pdf, pageNum]);
 
-  const toPdfPt = (e: React.MouseEvent): Pt => {
+  const toPdfPt = (e: React.MouseEvent | React.PointerEvent): Pt => {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
   };
+
+  // „Rodyti brėžinyje“: perjungiame puslapį, priartiname prie figūros ir paryškiname
+  useEffect(() => {
+    if (!locate || !pdf) return;
+    setPageNum(locate.pdfPage);
+    setLocatePulse(locate.points);
+    const xs = locate.points.map((p) => p.x);
+    const ys = locate.points.map((p) => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const bw = Math.max(30, maxX - minX), bh = Math.max(30, maxY - minY);
+    let scroll: ReturnType<typeof setTimeout> | undefined;
+    const fit = setTimeout(() => {
+      const scroller = wrapRef.current?.parentElement;
+      if (!scroller) return;
+      const z = Math.min(3.5, Math.max(0.5,
+        0.75 * Math.min(scroller.clientWidth / bw, scroller.clientHeight / bh)));
+      setZoom(z);
+      scroll = setTimeout(() => {
+        scroller.scrollLeft = (minX + bw / 2) * z - scroller.clientWidth / 2;
+        scroller.scrollTop = (minY + bh / 2) * z - scroller.clientHeight / 2;
+      }, 150);
+    }, 600);
+    const clear = setTimeout(() => setLocatePulse(null), 7000);
+    return () => { clearTimeout(fit); if (scroll) clearTimeout(scroll); clearTimeout(clear); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locate?.ts, pdf]);
 
   // Ašių tinklelis statomas tingiai (pirmą kartą prireikus) iš segmentų + teksto žymių
   const getAxes = (): AxisGrid | null => {
@@ -472,13 +503,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   // --- Žiniaraščio skaitymas (OCR) ---
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (e: React.PointerEvent) => {
     if ((tool !== 'scan' && tool !== 'match') || reviewRows || scanning || matchResults) return;
+    // Lietimo gestams – užfiksuojame pointer'į, kad tempimas nenutrūktų
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     const p = toPdfPt(e);
     setScanRect({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (e: React.PointerEvent) => {
     if (tool === 'scan' || tool === 'match') {
       if (!scanRect || e.buttons !== 1) return;
       const p = toPdfPt(e);
@@ -867,11 +900,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         <div className="max-h-[640px] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900">
           <div
             ref={wrapRef}
-            className="relative inline-block cursor-crosshair"
+            className="relative inline-block cursor-crosshair touch-none"
             onClick={handleClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
+            onPointerDown={handleMouseDown}
+            onPointerMove={handleMouseMove}
+            onPointerUp={handleMouseUp}
           >
             <canvas ref={canvasRef} className="block" />
             <svg width={viewSize.w} height={viewSize.h} className="absolute left-0 top-0">
@@ -899,6 +932,27 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   <circle cx={snapIndicator.x * zoom} cy={snapIndicator.y * zoom} r={6} fill="none" stroke="#0ea5e9" strokeWidth={2} />
                   <line x1={snapIndicator.x * zoom - 10} y1={snapIndicator.y * zoom} x2={snapIndicator.x * zoom + 10} y2={snapIndicator.y * zoom} stroke="#0ea5e9" strokeWidth={1.5} />
                   <line x1={snapIndicator.x * zoom} y1={snapIndicator.y * zoom - 10} x2={snapIndicator.x * zoom} y2={snapIndicator.y * zoom + 10} stroke="#0ea5e9" strokeWidth={1.5} />
+                </g>
+              )}
+              {/* „Rodyti brėžinyje“ pulsuojantis paryškinimas */}
+              {locatePulse && (
+                <g pointerEvents="none" className="animate-pulse">
+                  {locatePulse.length === 1 && (
+                    <circle cx={locatePulse[0].x * zoom} cy={locatePulse[0].y * zoom} r={10} fill="none" stroke="#7c3aed" strokeWidth={3} />
+                  )}
+                  {locatePulse.length === 2 && (
+                    <>
+                      <line x1={locatePulse[0].x * zoom} y1={locatePulse[0].y * zoom} x2={locatePulse[1].x * zoom} y2={locatePulse[1].y * zoom} stroke="#7c3aed" strokeWidth={4} strokeLinecap="round" />
+                      <circle cx={locatePulse[0].x * zoom} cy={locatePulse[0].y * zoom} r={5} fill="#7c3aed" />
+                      <circle cx={locatePulse[1].x * zoom} cy={locatePulse[1].y * zoom} r={5} fill="#7c3aed" />
+                    </>
+                  )}
+                  {locatePulse.length > 2 && (
+                    <polygon
+                      points={locatePulse.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
+                      fill="#7c3aed" fillOpacity={0.15} stroke="#7c3aed" strokeWidth={3} strokeLinejoin="round"
+                    />
+                  )}
                 </g>
               )}
               {/* Simbolių paieškos atitikmenys */}

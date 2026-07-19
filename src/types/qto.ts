@@ -35,6 +35,8 @@ export interface QtoItem {
   ifcClass?: string;
   /** IFC elemento expressID – 3D vaizdo ir žiniaraščio susiejimui */
   ifcExpressId?: number;
+  /** Tikrinimo būsena: sąmatininkas patvirtino poziciją */
+  verified?: boolean;
   name: string;
   material?: string;
   length_m?: number;

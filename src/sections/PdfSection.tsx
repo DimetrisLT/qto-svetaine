@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FilePlus2, FileText, Trash2 } from 'lucide-react';
 import FileDrop from '@/components/FileDrop';
 import PdfViewer from '@/components/PdfViewer';
@@ -19,18 +19,34 @@ interface Props {
   onData: (items: QtoItem[], meta: SourceMeta) => void;
   /** Išsaugoto projekto failų metaduomenys – kalibracijoms ir pririšimui atkurti */
   savedFilesMeta?: SourceMeta['pdfFiles'];
+  /** „Rodyti brėžinyje“ užklausa iš žiniaraščio */
+  locate?: { pdfFile: string; pdfPage: number; points: { x: number; y: number }[]; ts: number } | null;
 }
 
 /** Projekto režimas: keli susiję PDF failai (A, SK, VK dalys) kaip viena visuma */
-export default function PdfSection({ items, onData, savedFilesMeta }: Props) {
+export default function PdfSection({ items, onData, savedFilesMeta, locate = null }: Props) {
   const [files, setFiles] = useState<PdfFileEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [locateMissing, setLocateMissing] = useState(false);
   // Išsaugotą failų sąrašą įsimename vieną kartą – vėlesni emit() jo nenublukina,
   // todėl visi perinkti failai ras savo kalibracijas.
   const savedRef = useRef(savedFilesMeta);
 
   const active = files.find((f) => f.id === activeId) ?? null;
+
+  // „Rodyti brėžinyje“: perjungiame į reikiamą failą; jei failas neįkeltas – pranešame
+  useEffect(() => {
+    if (!locate) return;
+    if (files.some((f) => f.id === locate.pdfFile)) {
+      setActiveId(locate.pdfFile);
+      setLocateMissing(false);
+    } else {
+      setLocateMissing(true);
+      const t = setTimeout(() => setLocateMissing(false), 7000);
+      return () => clearTimeout(t);
+    }
+  }, [locate?.ts]);
 
   const emit = (nextItems: QtoItem[], nextFiles: PdfFileEntry[]) => {
     onData(nextItems, {
@@ -179,6 +195,12 @@ export default function PdfSection({ items, onData, savedFilesMeta }: Props) {
         )}
       </div>
 
+      {locateMissing && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          ⚠️ Šios pozicijos brėžinys neįkeltas šioje sesijoje – įkelkite PDF failą, kad parodytume matavimo vietą.
+        </p>
+      )}
+
       {active && (
         <PdfViewer
           key={active.id}
@@ -190,6 +212,7 @@ export default function PdfSection({ items, onData, savedFilesMeta }: Props) {
           onDetectScale={(upm) => setDetectedScale(active.id, upm)}
           items={activeItems}
           onItemsChange={handleItemsChange}
+          locate={locate && active.id === locate.pdfFile ? locate : null}
         />
       )}
     </div>

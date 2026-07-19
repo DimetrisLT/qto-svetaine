@@ -7,6 +7,7 @@ import SelfCheckPanel from '@/components/SelfCheckPanel';
 import AssemblyPanel from '@/components/AssemblyPanel';
 import EditItemDialog from '@/components/EditItemDialog';
 import PrintReport from '@/components/PrintReport';
+import CarbonCard from '@/components/CarbonCard';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
@@ -18,16 +19,25 @@ interface Props {
   onDeleteItem: (source: SourceType, id: string) => void;
   onAddItems: (source: SourceType, newItems: QtoItem[]) => void;
   onUpdateItem: (source: SourceType, id: string, patch: Partial<QtoItem>) => void;
+  onLocateItem?: (item: QtoItem) => void;
+  onToggleVerify?: (item: QtoItem) => void;
 }
 
-export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems, onUpdateItem }: Props) {
+export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems, onUpdateItem, onLocateItem, onToggleVerify }: Props) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<QtoItem | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [verifyFilter, setVerifyFilter] = useState<'all' | 'todo' | 'done'>('all');
   const items = useMemo(
     () => [...itemsBySource.IFC, ...itemsBySource.PDF, ...itemsBySource.DXF],
     [itemsBySource],
   );
+  const verifiedCount = items.filter((i) => i.verified).length;
+  const filteredItems = useMemo(() => {
+    if (verifyFilter === 'done') return items.filter((i) => i.verified);
+    if (verifyFilter === 'todo') return items.filter((i) => !i.verified);
+    return items;
+  }, [items, verifyFilter]);
   const checks = useMemo(() => runSelfChecks(items, metas), [items, metas]);
   const warns = checks.filter((c) => c.status === 'warn').length;
 
@@ -44,6 +54,8 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
   return (
     <div className="space-y-6">
       <SummaryCards items={items} />
+
+      <CarbonCard items={items} />
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -91,10 +103,36 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
       </div>
 
       <div>
-        <h3 className="mb-2 text-lg font-semibold">Kiekių suvestinė (detaliai)</h3>
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <h3 className="text-lg font-semibold">Kiekių suvestinė (detaliai)</h3>
+          {onToggleVerify && items.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className={verifiedCount === items.length ? 'font-medium text-emerald-700 dark:text-emerald-400' : ''}>
+                ✓ patikrinta {verifiedCount}/{items.length}
+              </span>
+              <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full bg-emerald-500 transition-all"
+                  style={{ width: `${(verifiedCount / items.length) * 100}%` }}
+                />
+              </span>
+              <select
+                value={verifyFilter}
+                onChange={(e) => setVerifyFilter(e.target.value as 'all' | 'todo' | 'done')}
+                className="h-7 rounded-md border bg-background px-1.5 text-xs"
+              >
+                <option value="all">Visos</option>
+                <option value="todo">Tik nepatikrintos</option>
+                <option value="done">Tik patikrintos</option>
+              </select>
+            </div>
+          )}
+        </div>
         <QtoTable
-          items={items}
+          items={filteredItems}
           onEdit={setEditing}
+          onLocate={onLocateItem}
+          onToggleVerify={onToggleVerify}
           onDelete={(id) => {
             const src = items.find((i) => i.id === id)?.source;
             if (src) onDeleteItem(src, id);

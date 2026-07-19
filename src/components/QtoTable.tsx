@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle2, Crosshair, Pencil, Trash2 } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, type QtoItem, type SourceType } from '@/types/qto';
 import { fmt } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -8,11 +8,15 @@ interface Props {
   items: QtoItem[];
   onDelete?: (id: string) => void;
   onEdit?: (item: QtoItem) => void;
+  /** „Rodyti brėžinyje“ – perjungti į PDF vietą (jei pozicija turi taškus) */
+  onLocate?: (item: QtoItem) => void;
+  /** Tikrinimo statuso perjungimas */
+  onToggleVerify?: (item: QtoItem) => void;
   showSource?: boolean;
   compact?: boolean;
 }
 
-export default function QtoTable({ items, onDelete, onEdit, showSource = true, compact = false }: Props) {
+export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVerify, showSource = true, compact = false }: Props) {
   const [catFilter, setCatFilter] = useState<string>('all');
   const [srcFilter, setSrcFilter] = useState<string>('all');
 
@@ -79,12 +83,12 @@ export default function QtoTable({ items, onDelete, onEdit, showSource = true, c
               <th className="px-3 py-2 font-medium text-right">Plotas, m²</th>
               <th className="px-3 py-2 font-medium text-right">Tūris, m³</th>
               <th className="px-3 py-2 font-medium text-right">Vnt.</th>
-              {(onDelete || onEdit) && <th className="px-2 py-2" />}
+              {(onDelete || onEdit || onLocate || onToggleVerify) && <th className="px-2 py-2" />}
             </tr>
           </thead>
           <tbody>
             {filtered.map((i) => (
-              <tr key={i.id} className="border-t hover:bg-muted/30" title={i.note}>
+              <tr key={i.id} className={cn('border-t hover:bg-muted/30', i.verified && 'bg-emerald-50/60 dark:bg-emerald-950/20')} title={i.note}>
                 {showSource && (
                   <td className="px-3 py-1.5">
                     <span className={cn(
@@ -125,9 +129,27 @@ export default function QtoTable({ items, onDelete, onEdit, showSource = true, c
                 <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.area_m2)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.volume_m3)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{i.count}</td>
-                {(onDelete || onEdit) && (
+                {(onDelete || onEdit || onLocate || onToggleVerify) && (
                   <td className="px-2 py-1.5">
                     <span className="flex items-center gap-1.5">
+                      {onToggleVerify && (
+                        <button
+                          onClick={() => onToggleVerify(i)}
+                          className={i.verified ? 'text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}
+                          title={i.verified ? 'Patikrinta – nuimti žymą' : 'Pažymėti kaip patikrintą'}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onLocate && i.pdfPoints && i.pdfPoints.length > 0 && (
+                        <button
+                          onClick={() => onLocate(i)}
+                          className="text-muted-foreground hover:text-primary"
+                          title="Rodyti brėžinyje"
+                        >
+                          <Crosshair className="h-4 w-4" />
+                        </button>
+                      )}
                       {onEdit && (
                         <button
                           onClick={() => onEdit(i)}

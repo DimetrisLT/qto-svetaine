@@ -2,6 +2,7 @@ import { Printer, X } from 'lucide-react';
 import SummaryCards from '@/components/SummaryCards';
 import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
+import CarbonCard from '@/components/CarbonCard';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { fmt } from '@/lib/format';
 import type { QtoItem, SourceMeta } from '@/types/qto';
@@ -17,6 +18,7 @@ interface Props {
 export default function PrintReport({ items, metas, projectName, onClose }: Props) {
   const checks = runSelfChecks(items, metas);
   const warns = checks.filter((c) => c.status === 'warn').length;
+  const verified = items.filter((i) => i.verified).length;
   const now = new Date();
 
   return (
@@ -44,13 +46,18 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
           <h1 className="mt-1 text-2xl font-bold">{projectName || 'Statybinio projekto kiekiai'}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Suformuota {now.toLocaleString('lt-LT', { dateStyle: 'long', timeStyle: 'short' })} ·{' '}
-            {items.length} pozicijos · {warns > 0 ? `${warns} įspėjimai savikontrolėje` : 'savikontrolė be įspėjimų'}
+            {items.length} pozicijos · patikrinta {verified}/{items.length} · {warns > 0 ? `${warns} įspėjimai savikontrolėje` : 'savikontrolė be įspėjimų'}
           </p>
         </header>
 
         <section className="mb-6">
           <h2 className="mb-2 text-lg font-semibold">Suvestinė pagal kategorijas</h2>
           <SummaryCards items={items} />
+        </section>
+
+        <section className="mb-6">
+          <h2 className="mb-2 text-lg font-semibold">Anglies pėdsakas (orientacinis)</h2>
+          <CarbonCard items={items} />
         </section>
 
         <section className="mb-6 print:break-inside-auto">
