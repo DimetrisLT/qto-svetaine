@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Lock, Crosshair } from 'lucide-react';
 import { Link } from 'react-router';
 
-const TECH = ['React 19', 'TypeScript', 'web-ifc', 'three.js', 'pdf.js', 'Tesseract.js', 'SheetJS', 'Tailwind'];
+const TECH = ['100 % naršyklėje', 'Veikia offline (PWA)', 'IFC · PDF · DXF', 'Excel eksportas', 'Savikontrolė', 'Be registracijos'];
 
 export default function Footer() {
   return (

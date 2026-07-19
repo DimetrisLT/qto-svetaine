@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 
 interface Pt { x: number; y: number }
 
@@ -45,10 +45,22 @@ const SNAP_POINTS: Pt[] = [
 const path = (pts: Pt[], close = false) =>
   pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ') + (close ? ' Z' : '');
 
-/** Interaktyvus brėžinys: nusipiešia pats, kursorius prisiriša prie kampų */
+/** Interaktyvus brėžinys: nusipiešia pats, kursorius prisiriša prie kampų,
+ *  o nejudinant pelės – kartojasi automatinė matavimo demonstracija */
 export default function BlueprintPlan() {
   const ref = useRef<SVGSVGElement>(null);
   const [snap, setSnap] = useState<Pt | null>(null);
+  const reduced = useReducedMotion();
+
+  // Demonstracijos ciklas: 10 s animacija + 1,5 s pauzė
+  const DEMO = 10;
+  const T = {
+    cursor: [0, 0.1, 0.18, 0.44, 0.86, 0.95],   // atsiranda → pas A → juda → pas B → laikosi → nyksta
+    line: [0, 0.18, 0.44, 0.86, 0.95],          // brėžiama kartu su kursoriumi
+    label: [0, 0.46, 0.54, 0.86, 0.95],         // matmuo po antro paspaudimo
+    chip: [0, 0.54, 0.62, 0.86, 0.95],          // žiniaraščio eilutė
+  };
+  const loop = { duration: DEMO, repeat: Infinity, repeatDelay: 1.5, ease: 'easeInOut' as const };
 
   const snapR = 60;
   const onMove = (e: React.MouseEvent) => {
@@ -156,6 +168,67 @@ export default function BlueprintPlan() {
         ))}
         <text x={605} y={812} textAnchor="middle" fontSize={17} fill="#fbbf24" className="font-dim">{dimText}</text>
       </motion.g>
+
+      {/* Automatinė demonstracija (kai vartotojas nežaidžia su planu) */}
+      {!snap && !reduced && (
+        <g pointerEvents="none">
+          {/* Matmenų linija žemiau sienos (kaip tikrame brėžinyje): 4,90 m */}
+          <motion.g
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 1, 1, 0] }}
+            transition={{ ...loop, times: T.line }}
+          >
+            <motion.line
+              x1={640} y1={544} x2={1130} y2={544}
+              stroke="#fbbf24" strokeWidth={2.5}
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: [0, 0, 1, 1, 1] }}
+              transition={{ ...loop, times: [0, 0.18, 0.44, 0.86, 1] }}
+            />
+            <line x1={640} y1={532} x2={640} y2={556} stroke="#fbbf24" strokeWidth={2.5} />
+            <line x1={1130} y1={532} x2={1130} y2={556} stroke="#fbbf24" strokeWidth={2.5} />
+          </motion.g>
+          {/* Matmuo */}
+          <motion.text
+            x={885} y={528} textAnchor="middle" fontSize={19} fill="#fbbf24" className="font-dim" fontWeight={600}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0, 1, 1, 0] }}
+            transition={{ ...loop, times: T.label }}
+          >
+            4,90 m
+          </motion.text>
+          {/* Žiniaraščio eilutės čipsas */}
+          <motion.g
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: [0, 0, 1, 1, 0], y: [-10, -10, 0, 0, -10] }}
+            transition={{ ...loop, times: T.chip }}
+          >
+            <rect x={812} y={104} width={368} height={46} rx={10} fill="#0a1628" stroke="#34d399" strokeWidth={1.5} />
+            <text x={830} y={133} fontSize={17} fill="#34d399" className="font-dim">03.1 Sienos · 4,90 m ✓</text>
+          </motion.g>
+          {/* Paspaudimo pulsai ties abiem taškais */}
+          <motion.circle cx={640} cy={500} fill="none" stroke="#22d3ee" strokeWidth={3}
+            initial={{ r: 10, opacity: 0 }}
+            animate={{ r: [10, 10, 30, 30], opacity: [0, 0.9, 0, 0] }}
+            transition={{ ...loop, times: [0, 0.16, 0.24, 1] }}
+          />
+          <motion.circle cx={1130} cy={500} fill="none" stroke="#22d3ee" strokeWidth={3}
+            initial={{ r: 10, opacity: 0 }}
+            animate={{ r: [10, 10, 30, 30], opacity: [0, 0, 0.9, 0, 0] }}
+            transition={{ ...loop, times: [0, 0.42, 0.46, 0.54, 1] }}
+          />
+          {/* „Šmėkliškas“ kursorius */}
+          <motion.g
+            initial={{ x: 0, opacity: 0 }}
+            animate={{ x: [0, 0, 490, 490, 490], opacity: [0, 1, 1, 1, 0] }}
+            transition={{ ...loop, times: T.cursor }}
+          >
+            <circle cx={640} cy={500} r={13} fill="none" stroke="#22d3ee" strokeWidth={2.5} />
+            <line x1={640 - 24} y1={500} x2={640 + 24} y2={500} stroke="#22d3ee" strokeWidth={2} />
+            <line x1={640} y1={500 - 24} x2={640} y2={500 + 24} stroke="#22d3ee" strokeWidth={2} />
+          </motion.g>
+        </g>
+      )}
 
       {/* Snap kryželis */}
       {snap && (

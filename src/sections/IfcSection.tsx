@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import FileDrop from '@/components/FileDrop';
+import EmptyGuide from '@/components/EmptyGuide';
 import IfcViewer from '@/components/IfcViewer';
 import { parseIfcFile, type IfcParseResult } from '@/lib/ifc/parseIfc';
 import type { QtoItem, SourceMeta } from '@/types/qto';
@@ -48,13 +49,17 @@ export default function IfcSection({ fileName, onData }: Props) {
   return (
     <div className="space-y-4">
       {!result && !loading && (
-        <FileDrop
-          accept=".ifc,.ifczip"
-          label="Įkelkite IFC modelį"
-          hint="Kiekiai (ilgis, plotas, tūris), medžiagos ir 3D geometrija išgaunami automatiškai iš IFC klasių (IfcWall, IfcSlab, IfcColumn, IfcBeam…)."
-          fileName={name}
-          onFile={handleFile}
-        />
+        <>
+          <FileDrop
+            accept=".ifc,.ifczip"
+            label="Įkelkite IFC modelį"
+            hint="Kiekiai (ilgis, plotas, tūris), medžiagos ir 3D geometrija išgaunami automatiškai iš IFC klasių (IfcWall, IfcSlab, IfcColumn, IfcBeam…)."
+            fileName={name}
+            onFile={handleFile}
+            sample={{ url: '/pavyzdys-modelis.ifc', fileName: 'pavyzdys-modelis.ifc' }}
+          />
+          {!name && <EmptyGuide />}
+        </>
       )}
 
       {loading && (

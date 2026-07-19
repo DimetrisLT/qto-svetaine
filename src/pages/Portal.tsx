@@ -4,6 +4,7 @@ import { Building2, FolderOpen, History, Link2, LogOut, Plus, Trash2 } from 'luc
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import { LOGIN_PATH } from '@/const';
+import ThemeToggle from '@/components/ThemeToggle';
 
 /** Vartotojo portalas: debesyje išsaugoti projektai */
 export default function Portal() {
@@ -55,7 +56,29 @@ export default function Portal() {
   };
 
   if (isLoading || !user) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Kraunama…</div>;
+    // Skeleto būsena – vietoj pliko „Kraunama…“
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b">
+          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
+            <div className="h-10 w-10 animate-pulse rounded-xl bg-muted" />
+            <div className="space-y-2">
+              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-44 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+        </div>
+        <div className="mx-auto grid max-w-5xl gap-4 px-4 py-6 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-3 rounded-xl border p-5">
+              <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+              <div className="h-8 w-full animate-pulse rounded-lg bg-muted" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -70,6 +93,7 @@ export default function Portal() {
             <p className="text-xs text-muted-foreground">{user.name ?? user.email ?? 'Vartotojas'}</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
             <Link
               to="/app"
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"

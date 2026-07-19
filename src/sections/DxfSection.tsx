@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import FileDrop from '@/components/FileDrop';
+import EmptyGuide from '@/components/EmptyGuide';
 import DxfViewer from '@/components/DxfViewer';
 import { parseDxfText, type DxfParseResult } from '@/lib/dxf/parseDxf';
 import type { QtoItem, SourceMeta } from '@/types/qto';
@@ -51,7 +52,9 @@ export default function DxfSection({ fileName, items, onData }: Props) {
             hint="Programa perskaito sluoksnius, suskaičiuoja linijų ilgius, uždarų kontūrų plotus ir blokų kiekius. DWG failą konvertuokite į DXF (ODA File Converter / LibreCAD)."
             fileName={name}
             onFile={handleFile}
+            sample={{ url: '/pavyzdys-planas.dxf', fileName: 'pavyzdys-planas.dxf' }}
           />
+          {!name && <EmptyGuide />}
           {error && <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">{error}</p>}
         </>
       )}

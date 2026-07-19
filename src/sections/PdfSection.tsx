@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FilePlus2, FileText, Trash2 } from 'lucide-react';
 import FileDrop from '@/components/FileDrop';
+import EmptyGuide from '@/components/EmptyGuide';
 import PdfViewer from '@/components/PdfViewer';
 import { DISCIPLINES, detectDiscipline, uid, type QtoItem, type SourceMeta } from '@/types/qto';
 import { cn } from '@/lib/utils';
@@ -134,7 +135,9 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
         label="Įkelkite projekto PDF brėžinius"
         hint="Galite įkelti kelis susijusius failus: architektūros dalį (A), konstrukcijų dalį (SK), inžinerines dalis (VK, E, Š, V). Kiekvienas failas kalibruojamas atskirai, o visi matavimai sueina į bendrą darbų kiekių žiniaraštį."
         onFile={addFile}
+        sample={{ url: '/pavyzdys-planas.pdf', fileName: 'pavyzdys-planas.pdf' }}
       />
+      <EmptyGuide />
       </div>
     );
   }
@@ -147,19 +150,19 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
           <div
             key={f.id}
             className={cn(
-              'flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors',
+              'flex max-w-full flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors',
               f.id === activeId ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/60',
             )}
           >
             <button onClick={() => setActiveId(f.id)} className="flex items-center gap-2 text-left">
               <FileText className={cn('h-4 w-4', f.id === activeId ? 'text-primary' : 'text-muted-foreground')} />
-              <span className="max-w-[220px] truncate font-medium">{f.name}</span>
+              <span className="max-w-[130px] truncate font-medium sm:max-w-[220px]">{f.name}</span>
             </button>
             <select
               value={f.discipline}
               onChange={(e) => setDiscipline(f.id, e.target.value)}
               title="Projekto dalis"
-              className="h-7 rounded-md border bg-background px-1 text-xs"
+              className="h-7 max-w-[106px] rounded-md border bg-background px-1 text-xs sm:max-w-none"
             >
               {DISCIPLINES.map((d) => (
                 <option key={d.code} value={d.code}>{d.code} – {d.lt}</option>

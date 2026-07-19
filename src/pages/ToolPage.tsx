@@ -9,6 +9,7 @@ import {
 } from '@/lib/projectStore';
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
+import ThemeToggle from '@/components/ThemeToggle';
 
 // Sunkiosios bibliotekos (web-ifc, three, pdfjs) užkraunamos tik pagal poreikį
 const IfcSection = lazy(() => import('@/sections/IfcSection'));
@@ -215,15 +216,16 @@ export default function ToolPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+        <div className="mx-auto flex max-w-7xl items-center gap-2.5 px-4 py-3 sm:gap-3 sm:py-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground sm:h-10 sm:w-10">
             <Building2 className="h-5 w-5" />
           </div>
-          <div>
-            <h1 className="text-lg font-bold leading-tight">QTO – Statybos kiekių surinkimas</h1>
-            <p className="text-xs text-muted-foreground">IFC · PDF · DXF → kiekiai, savikontrolė, Excel</p>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-bold leading-tight sm:text-lg">QTO – Statybos kiekių surinkimas</h1>
+            <p className="hidden text-xs text-muted-foreground sm:block">IFC · PDF · DXF → kiekiai, savikontrolė, Excel</p>
           </div>
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <ThemeToggle />
             <span className={cn('flex items-center gap-0.5', histTick >= 0 && '')}>
               <button
                 onClick={undo}
@@ -252,14 +254,14 @@ export default function ToolPage() {
                   title="Įrašyti projektą į paskyrą (debesį)"
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
-                  <CloudUpload className="h-3.5 w-3.5" /> {cloudId && cloudName ? 'Atnaujinti' : 'Įrašyti į paskyrą'}
+                  <CloudUpload className="h-3.5 w-3.5" /> <span className="hidden md:inline">{cloudId && cloudName ? 'Atnaujinti' : 'Įrašyti į paskyrą'}</span>
                 </button>
                 <Link
                   to="/portal"
                   title="Mano projektai (portalas)"
                   className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
-                  <LayoutGrid className="h-3.5 w-3.5" /> Portalas
+                  <LayoutGrid className="h-3.5 w-3.5" /> <span className="hidden md:inline">Portalas</span>
                 </Link>
               </>
             ) : (
@@ -268,7 +270,7 @@ export default function ToolPage() {
                 title="Prisijungti – projektų saugojimas debesyje"
                 className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
-                <LogIn className="h-3.5 w-3.5" /> Prisijungti
+                <LogIn className="h-3.5 w-3.5" /> <span className="hidden md:inline">Prisijungti</span>
               </Link>
             )}
             <button
@@ -276,14 +278,14 @@ export default function ToolPage() {
               title="Atsisiųsti projektą JSON failu (pozicijos + kalibracijos)"
               className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
             >
-              <Download className="h-3.5 w-3.5" /> Projektas
+              <Download className="h-3.5 w-3.5" /> <span className="hidden md:inline">Projektas</span>
             </button>
             <button
               onClick={() => importInputRef.current?.click()}
               title="Atidaryti anksčiau išsaugotą projektą (JSON)"
               className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
             >
-              <Upload className="h-3.5 w-3.5" /> Atidaryti
+              <Upload className="h-3.5 w-3.5" /> <span className="hidden md:inline">Atidaryti</span>
             </button>
             <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJson} />
           </div>

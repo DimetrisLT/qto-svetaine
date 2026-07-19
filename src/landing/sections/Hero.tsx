@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router';
-import { ArrowRight, FileText, Boxes, ScanText, Crosshair } from 'lucide-react';
+import { ArrowRight, FileText, Boxes, ScanText, Crosshair, Menu, X } from 'lucide-react';
 import BlueprintPlan from '@/landing/components/BlueprintPlan';
 
 const STATS = [
@@ -18,7 +19,15 @@ const fadeUp = {
   }),
 };
 
+const NAV_LINKS = [
+  { href: '#kaip-veikia', label: 'Kaip veikia' },
+  { href: '#funkcijos', label: 'Funkcijos' },
+  { href: '#savikontrole', label: 'Savikontrolė' },
+  { href: '#ziniarastis', label: 'Žiniaraštis' },
+];
+
 export default function Hero() {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="blueprint-grid blueprint-fade relative">
       {/* Navigacija */}
@@ -31,26 +40,54 @@ export default function Hero() {
           <span className="font-dim hidden text-xs text-muted-foreground sm:inline">v2 · kiekių surinkimas</span>
         </div>
         <div className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
-          <a href="#kaip-veikia" className="transition-colors hover:text-sky-300">Kaip veikia</a>
-          <a href="#funkcijos" className="transition-colors hover:text-sky-300">Funkcijos</a>
-          <a href="#savikontrole" className="transition-colors hover:text-sky-300">Savikontrolė</a>
-          <a href="#ziniarastis" className="transition-colors hover:text-sky-300">Žiniaraštis</a>
+          {NAV_LINKS.map((l) => (
+            <a key={l.href} href={l.href} className="transition-colors hover:text-sky-300">{l.label}</a>
+          ))}
         </div>
         <div className="flex items-center gap-2.5">
           <Link
             to="/portal"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300"
+            className="hidden whitespace-nowrap rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300 sm:block"
           >
             Portalas
           </Link>
           <Link
             to="/app"
-            className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-[0_0_24px_-4px] shadow-sky-500/60 transition-all hover:bg-sky-400 hover:shadow-sky-400/60"
+            className="whitespace-nowrap rounded-lg bg-sky-500 px-3.5 py-2 text-xs font-semibold text-slate-950 shadow-[0_0_24px_-4px] shadow-sky-500/60 transition-all hover:bg-sky-400 hover:shadow-sky-400/60 sm:px-4 sm:text-sm"
           >
             Atidaryti programą
           </Link>
+          {/* Mobilioji navigacija */}
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Meniu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300 md:hidden"
+          >
+            {menuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+          </button>
         </div>
       </nav>
+      {menuOpen && (
+        <div className="relative z-20 mx-4 mb-2 rounded-xl border border-border bg-card/95 p-2 shadow-2xl backdrop-blur md:hidden">
+          {NAV_LINKS.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sky-400/10 hover:text-sky-300"
+            >
+              {l.label}
+            </a>
+          ))}
+          <Link
+            to="/portal"
+            onClick={() => setMenuOpen(false)}
+            className="block rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-sky-400/10 hover:text-sky-300 sm:hidden"
+          >
+            Portalas
+          </Link>
+        </div>
+      )}
 
       <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-10 px-6 pb-16 pt-10 lg:grid-cols-[1.05fr_1fr] lg:pb-24 lg:pt-16">
         {/* Kairė: tekstas */}
@@ -118,7 +155,7 @@ export default function Hero() {
             </div>
             <BlueprintPlan />
             <div className="border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">
-              Užveskite pelę — kursorius <span className="text-cyan-300">prisiriša prie kampų</span>, kaip programoje
+              Demonstracija kartojasi pati — arba užveskite pelę: kursorius <span className="text-cyan-300">prisiriša prie kampų</span>, kaip programoje
             </div>
           </div>
         </motion.div>

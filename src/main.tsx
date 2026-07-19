@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router'
 import { TRPCProvider } from '@/providers/trpc'
 import './index.css'
 import App from './App.tsx'
+import { applyStoredTheme } from '@/components/ThemeToggle'
+
+applyStoredTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,5 +1,5 @@
 // QTO service worker: programos karkasas veikia offline, API – visada tinklas.
-const CACHE = 'qto-shell-v1';
+const CACHE = 'qto-shell-v2';
 // Tik '/': SPA fallback grąžina 404 be text/html Accept, tad '/app' čia netelptų –
 // jis į talpyklą patenka per navigacijos handlerį (network-first) žemiau.
 const SHELL = ['/', '/manifest.webmanifest'];

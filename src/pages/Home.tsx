@@ -1,3 +1,4 @@
+import { MotionConfig } from 'framer-motion';
 import CadCursor from '@/landing/components/CadCursor';
 import Marquee from '@/landing/components/Marquee';
 import Hero from '@/landing/sections/Hero';
@@ -10,15 +11,19 @@ import '@/landing.css';
 
 export default function Home() {
   return (
-    <div className="landing-root relative min-h-screen bg-background">
-      <CadCursor />
-      <Hero />
-      <Marquee />
-      <HowItWorks />
-      <Features />
-      <SelfCheckDemo />
-      <Ziniarastis />
-      <Footer />
-    </div>
+    // reducedMotion="user": gerbiamas sistemos „mažinti judesį“ nustatymas –
+    // turinys visada matomas, animacijos tik patobulinimas
+    <MotionConfig reducedMotion="user">
+      <div className="landing-root relative min-h-screen bg-background">
+        <CadCursor />
+        <Hero />
+        <Marquee />
+        <HowItWorks />
+        <Features />
+        <SelfCheckDemo />
+        <Ziniarastis />
+        <Footer />
+      </div>
+    </MotionConfig>
   );
 }

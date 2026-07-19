@@ -709,7 +709,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     <button
       onClick={() => pickTool(t)}
       className={cn(
-        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+        'flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
         tool === t ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
       )}
     >
@@ -750,9 +750,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-      <div>
-        {/* Įrankių juosta */}
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+      <div className="min-w-0">
+        {/* Įrankių juosta: mobiliajame slenkama horizontaliai */}
+        <div className="mb-2 flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
           {toolBtn('calib', <Ruler className="h-3.5 w-3.5" />, 'Mastelis')}
           {toolBtn('length', <Spline className="h-3.5 w-3.5" />, 'Ilgis (sienos)')}
           {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, 'Plotas')}
@@ -760,10 +760,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, 'Simboliai')}
           {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, 'Žiniaraštis (OCR)')}
           <span className="mx-1 h-5 w-px bg-border" />
-          <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
-          <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
           <span className="mx-1 h-5 w-px bg-border" />
-          <button disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
+          <button disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
           <span className="flex items-center gap-1 text-xs tabular-nums">
             <input
               key={pageNum}
@@ -783,7 +783,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             />
             / {numPages}
           </span>
-          <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
+          <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
           {layers.length > 0 && (
             <span className="relative">
               <span className="mx-1 h-5 w-px bg-border" />
@@ -1117,9 +1117,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           </div>
         )}
 
-        {/* Naujo matavimo forma */}
+        {/* Naujo matavimo forma: telefone – lipni apatinė kortelė (bottom sheet) */}
         {form && (
-          <div className="rounded-xl border border-primary/50 p-3 space-y-2">
+          <div className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
             <p className="text-sm font-semibold">
               {form.kind === 'length' ? 'Linijinis matavimas' : form.kind === 'area' ? 'Ploto matavimas' : `Skaičiavimas (${form.pts.length} vnt.)`}
             </p>

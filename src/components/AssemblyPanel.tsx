@@ -103,8 +103,8 @@ export default function AssemblyPanel({ items, onAdd }: Props) {
               {preview.map((l) => (
                 <tr key={l.id} className="border-b last:border-0">
                   <td className="py-1 pr-2">{l.name}</td>
-                  <td className="py-1 pr-2 text-right font-semibold">{fmt(l.count)} {l.unit}</td>
-                  <td className="py-1 text-muted-foreground">{l.note?.replace(/^Išvestinė eilutė \([^)]*\): /, '')}</td>
+                  <td className="font-dim py-1 pr-2 text-right font-semibold">{fmt(l.count)} {l.unit}</td>
+                  <td className="font-dim py-1 text-[11px] text-muted-foreground">{l.note?.replace(/^Išvestinė eilutė \([^)]*\): /, '')}</td>
                 </tr>
               ))}
             </tbody>

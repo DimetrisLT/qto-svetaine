@@ -1,9 +1,10 @@
-import { Printer, X } from 'lucide-react';
+import { Crosshair, Printer, X } from 'lucide-react';
 import SummaryCards from '@/components/SummaryCards';
 import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
 import CarbonCard from '@/components/CarbonCard';
 import { runSelfChecks } from '@/lib/selfCheck';
+import { summarizeCarbon } from '@/lib/carbon';
 import { fmt } from '@/lib/format';
 import type { QtoItem, SourceMeta } from '@/types/qto';
 
@@ -19,6 +20,7 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
   const checks = runSelfChecks(items, metas);
   const warns = checks.filter((c) => c.status === 'warn').length;
   const verified = items.filter((i) => i.verified).length;
+  const carbon = summarizeCarbon(items);
   const now = new Date();
 
   return (
@@ -42,7 +44,16 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
       {/* Ataskaitos turinys */}
       <div className="mx-auto max-w-4xl px-6 py-8 print:max-w-none print:px-0 print:py-0">
         <header className="mb-6 border-b-2 border-foreground pb-4">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">QTO · Kiekių apskaičiavimo ataskaita</p>
+          {/* Prekės ženklo juosta – spausdinama su spalvomis */}
+          <div className="mb-3 flex items-center gap-2.5" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-600 text-white">
+              <Crosshair className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold leading-tight">QTO</p>
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Kiekių apskaičiavimo ataskaita</p>
+            </div>
+          </div>
           <h1 className="mt-1 text-2xl font-bold">{projectName || 'Statybinio projekto kiekiai'}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Suformuota {now.toLocaleString('lt-LT', { dateStyle: 'long', timeStyle: 'short' })} ·{' '}
@@ -55,10 +66,13 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
           <SummaryCards items={items} />
         </section>
 
-        <section className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold">Anglies pėdsakas (orientacinis)</h2>
-          <CarbonCard items={items} />
-        </section>
+        {/* Anglies pėdsakas – tik kai bent vienai pozicijai pavyko priskirti koeficientą */}
+        {carbon.ratedCount > 0 && (
+          <section className="mb-6">
+            <h2 className="mb-2 text-lg font-semibold">Anglies pėdsakas (orientacinis)</h2>
+            <CarbonCard items={items} />
+          </section>
+        )}
 
         <section className="mb-6 print:break-inside-auto">
           <h2 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h2>
@@ -68,8 +82,8 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
           <ZiniarastisTable items={items} />
         </section>
 
+        {/* Antraštė – pačiame SelfCheckPanel komponente */}
         <section className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold">Savikontrolės rezultatai</h2>
           <SelfCheckPanel checks={checks} />
         </section>
 
