@@ -58,6 +58,20 @@ export const shares = mysqlTable("shares", {
 export type Share = typeof shares.$inferSelect;
 export type InsertShare = typeof shares.$inferInsert;
 
+/** Projektų versijų istorija – momentinė kopija kaskart įrašant (laikome paskutines 20) */
+export const projectVersions = mysqlTable("project_versions", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  itemCount: int("itemCount").notNull().default(0),
+  /** SavedProject JSON – ta pati forma kaip projects.data */
+  data: json("data").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ProjectVersion = typeof projectVersions.$inferSelect;
+export type InsertProjectVersion = typeof projectVersions.$inferInsert;
+
 // TODO: Add your tables here. See docs/Database.md for schema examples and patterns.
 //
 // Example:

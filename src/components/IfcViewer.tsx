@@ -1,22 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CATEGORY_INFO, CATEGORY_ORDER, type ElementCategory } from '@/types/qto';
+import { MousePointer2, X } from 'lucide-react';
+import { CATEGORY_INFO, CATEGORY_ORDER, type ElementCategory, type QtoItem } from '@/types/qto';
+import { fmt } from '@/lib/format';
 import type { ViewerGeometry } from '@/lib/ifc/parseIfc';
 
 interface Props {
   geometries: ViewerGeometry[];
+  items?: QtoItem[];
 }
 
-/** 3D IFC modelio peržiūra su spalvų koduote pagal elementų tipus */
-export default function IfcViewer({ geometries }: Props) {
+interface SceneCtx {
+  groups: Map<ElementCategory, THREE.Group>;
+  meshesById: Map<number, THREE.Mesh[]>;
+  raycaster: THREE.Raycaster;
+  camera: THREE.PerspectiveCamera;
+}
+
+/** 3D IFC modelio peržiūra: spalvos pagal tipus, paspaudimas → susieta žiniaraščio pozicija */
+export default function IfcViewer({ geometries, items = [] }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<{ groups: Map<ElementCategory, THREE.Group> } | null>(null);
+  const sceneRef = useRef<SceneCtx | null>(null);
   const [visible, setVisible] = useState<Record<ElementCategory, boolean>>(() => {
     const v = {} as Record<ElementCategory, boolean>;
     for (const c of CATEGORY_ORDER) v[c] = true;
     return v;
   });
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const selectedItem = useMemo(
+    () => (selectedId !== null ? items.find((i) => i.ifcExpressId === selectedId) ?? null : null),
+    [selectedId, items],
+  );
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -55,6 +71,7 @@ export default function IfcViewer({ geometries }: Props) {
     const radius = Math.max(size.x, size.y, size.z, 1);
 
     const groups = new Map<ElementCategory, THREE.Group>();
+    const meshesById = new Map<number, THREE.Mesh[]>();
     for (const g of geometries) {
       let group = groups.get(g.category);
       if (!group) {
@@ -79,9 +96,14 @@ export default function IfcViewer({ geometries }: Props) {
         transparent: true,
         opacity: g.category === 'window' ? 0.55 : 1,
       });
-      group.add(new THREE.Mesh(geo, mat));
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.userData.expressId = g.expressId;
+      group.add(mesh);
+      const arr = meshesById.get(g.expressId) ?? [];
+      arr.push(mesh);
+      meshesById.set(g.expressId, arr);
     }
-    sceneRef.current = { groups };
+    sceneRef.current = { groups, meshesById, raycaster: new THREE.Raycaster(), camera };
 
     const grid = new THREE.GridHelper(radius * 2, 20, 0x334155, 0x1e293b);
     grid.position.y = -size.y / 2 - 0.01;
@@ -91,6 +113,30 @@ export default function IfcViewer({ geometries }: Props) {
     camera.far = radius * 20;
     camera.updateProjectionMatrix();
     controls.target.set(0, 0, 0);
+
+    // Paspaudimas (click), o ne vilkimas: atskiriame pagal nuvažiuotą atstumą
+    let downX = 0, downY = 0;
+    const onDown = (e: PointerEvent) => { downX = e.clientX; downY = e.clientY; };
+    const onUp = (e: PointerEvent) => {
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+      const ctx = sceneRef.current;
+      if (!ctx) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      ctx.raycaster.setFromCamera(ndc, ctx.camera);
+      const meshes: THREE.Object3D[] = [];
+      for (const group of ctx.groups.values()) {
+        if (group.visible) meshes.push(...group.children);
+      }
+      const hits = ctx.raycaster.intersectObjects(meshes, false);
+      const id = hits[0]?.object.userData.expressId as number | undefined;
+      setSelectedId(id ?? null);
+    };
+    renderer.domElement.addEventListener('pointerdown', onDown);
+    renderer.domElement.addEventListener('pointerup', onUp);
 
     let raf = 0;
     const tick = () => {
@@ -112,6 +158,8 @@ export default function IfcViewer({ geometries }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      renderer.domElement.removeEventListener('pointerdown', onDown);
+      renderer.domElement.removeEventListener('pointerup', onUp);
       controls.dispose();
       renderer.dispose();
       scene.traverse((o) => {
@@ -133,6 +181,19 @@ export default function IfcViewer({ geometries }: Props) {
     }
   }, [visible, geometries]);
 
+  // Pažymėto elemento paryškinimas (emissive)
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (!ctx) return;
+    for (const [id, meshes] of ctx.meshesById) {
+      for (const m of meshes) {
+        const mat = m.material as THREE.MeshLambertMaterial;
+        mat.emissive.setHex(id === selectedId ? 0x7c3aed : 0x000000);
+        mat.emissiveIntensity = id === selectedId ? 0.85 : 0;
+      }
+    }
+  }, [selectedId, geometries]);
+
   const presentCats = CATEGORY_ORDER.filter((c) => geometries.some((g) => g.category === c));
 
   return (
@@ -140,8 +201,44 @@ export default function IfcViewer({ geometries }: Props) {
       <div className="relative h-[420px] w-full overflow-hidden rounded-xl border bg-slate-900">
         <div ref={mountRef} className="h-full w-full" />
         <p className="absolute bottom-2 left-2 text-[11px] text-slate-400">
-          Vilkite – sukti · ratukas – artinti · dešinysis – slinkti
+          Vilkite – sukti · ratukas – artinti · <b>spauskite elementą</b> – kiekiai iš žiniaraščio
         </p>
+        {selectedId !== null && (
+          <div className="absolute left-2 top-2 max-w-[320px] rounded-lg bg-background/95 p-3 text-xs shadow-lg backdrop-blur">
+            <div className="mb-1 flex items-start justify-between gap-2">
+              <p className="font-semibold leading-tight">
+                {selectedItem?.name ?? `Elementas #${selectedId}`}
+              </p>
+              <button onClick={() => setSelectedId(null)} className="rounded p-0.5 hover:bg-muted">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {selectedItem ? (
+              <div className="space-y-0.5 text-muted-foreground">
+                <p>
+                  <span
+                    className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+                    style={{ backgroundColor: CATEGORY_INFO[selectedItem.category].color }}
+                  />
+                  {CATEGORY_INFO[selectedItem.category].lt}
+                  {selectedItem.ifcClass ? ` · ${selectedItem.ifcClass}` : ''}
+                </p>
+                {selectedItem.material && <p>Medžiaga: {selectedItem.material}</p>}
+                <p className="font-medium text-foreground">
+                  {[
+                    selectedItem.length_m !== undefined && `Ilgis ${fmt(selectedItem.length_m)} m`,
+                    selectedItem.height_m !== undefined && `aukštis ${fmt(selectedItem.height_m)} m`,
+                    selectedItem.area_m2 !== undefined && `plotas ${fmt(selectedItem.area_m2)} m²`,
+                    selectedItem.volume_m3 !== undefined && `tūris ${fmt(selectedItem.volume_m3)} m³`,
+                  ].filter(Boolean).join(' · ') || `${selectedItem.count} ${selectedItem.unit}`}
+                </p>
+                {selectedItem.note && <p className="text-[11px]">{selectedItem.note}</p>}
+              </div>
+            ) : (
+              <p className="text-muted-foreground">Šis elementas neįtrauktas į žiniaraštį.</p>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         {presentCats.map((c) => (
@@ -156,6 +253,11 @@ export default function IfcViewer({ geometries }: Props) {
             {CATEGORY_INFO[c].lt}
           </label>
         ))}
+        {selectedId === null && (
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+            <MousePointer2 className="h-3 w-3" /> spauskite ant elemento 3D vaizde
+          </span>
+        )}
       </div>
     </div>
   );

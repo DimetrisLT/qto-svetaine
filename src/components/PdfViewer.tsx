@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, round } from '@/lib/format';
@@ -17,13 +17,24 @@ import { extractTextItems } from '@/lib/pdf/textItems';
 import { ocrTextItems } from '@/lib/ocr/pageText';
 import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
 import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
+import { buildRoomFinishItems } from '@/lib/pdf/roomFinishes';
+import { grayscaleFromCanvas, matchTemplate, cropGray, binarizeDilate } from '@/lib/ocr/templateMatch';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
 
-type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan';
+type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan' | 'match';
+
+interface SymbolMatch {
+  /** Centro taškas PDF pt (scale 1) */
+  x: number;
+  y: number;
+  score: number;
+  thumb: string;
+  excluded: boolean;
+}
 
 interface ScanRect {
   x0: number; y0: number; x1: number; y1: number;
@@ -45,6 +56,10 @@ interface PendingForm {
   dimCheck?: { dimMm: number; ok: boolean } | null;
   /** Ašių tinklelio zona ties elemento centroidu (pvz. „A–B / 3–4“) */
   axesZone?: string | null;
+  /** Patalpos apdailos pozicijų generavimas (kategorijai „Patalpos“) */
+  genFinishes?: boolean;
+  roomHeight?: string;
+  deductOpenings?: boolean;
 }
 
 interface Props {
@@ -101,6 +116,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [layers, setLayers] = useState<{ id: string; name: string; visible: boolean }[]>([]);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layerTick, setLayerTick] = useState(0);
+  // Simbolių paieška šablonu (#1)
+  const [matchResults, setMatchResults] = useState<SymbolMatch[] | null>(null);
+  const [matching, setMatching] = useState(false);
+  const [matchProgress, setMatchProgress] = useState(0);
+  const [matchThumb, setMatchThumb] = useState<string | null>(null);
+  const [matchError, setMatchError] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -305,7 +326,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (tool === 'none' || form) return;
+    if (tool === 'none' || tool === 'scan' || tool === 'match' || form) return;
     const p = snapRef.current ?? toPdfPt(e);
     if (tool === 'calib') {
       const next = [...calibPts, p].slice(-2);
@@ -347,6 +368,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       nameSuggested: suggested !== null,
       dimCheck,
       axesZone: axesZoneVal,
+      genFinishes: kind === 'area',
+      roomHeight: '2.7',
+      deductOpenings: true,
     });
     setCurrent([]);
   };
@@ -377,6 +401,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       area_m2 = calibrated ? round(u / (unitsPerMeter! * unitsPerMeter!), 3) : 0;
       unit = 'm²';
       if (!Number.isNaN(t)) { volume_m3 = round(area_m2 * t, 3); unit = 'm³'; }
+      // Perimetras – informatyvu visoms ploto pozicijoms, būtina patalpų apdailai
+      length_m = round(toMeters(polylineLength(form.pts, true)) ?? 0, 3);
     } else {
       count = form.pts.length;
       unit = 'vnt.';
@@ -390,7 +416,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       category: form.category,
       name: form.name || `${CATEGORY_INFO[form.category].lt} (PDF p.${pageNum})`,
       material: form.material || undefined,
-      length_m: form.kind === 'length' ? length_m : undefined,
+      length_m,
       height_m: form.kind === 'length' && !Number.isNaN(h) ? h : undefined,
       thickness_m: !Number.isNaN(t) ? t : undefined,
       area_m2,
@@ -408,7 +434,17 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         form.axesZone ? `Ašys: ${form.axesZone}` : null,
       ].filter(Boolean).join('; ') || undefined,
     };
-    onItemsChange([...items, item]);
+    // Patalpos apdaila: grindys + lubos + sienos (su angų atėmimu)
+    let extra: QtoItem[] = [];
+    if (form.kind === 'area' && form.category === 'room' && form.genFinishes) {
+      const h = parseFloat((form.roomHeight ?? '').replace(',', '.'));
+      extra = buildRoomFinishItems(item, items, {
+        heightM: Number.isNaN(h) ? 2.7 : h,
+        deductOpenings: form.deductOpenings !== false,
+        openingThresholdM2: 0.5,
+      });
+    }
+    onItemsChange([...items, item, ...extra]);
     setForm(null);
   };
 
@@ -437,13 +473,13 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   // --- Žiniaraščio skaitymas (OCR) ---
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (tool !== 'scan' || reviewRows || scanning) return;
+    if ((tool !== 'scan' && tool !== 'match') || reviewRows || scanning || matchResults) return;
     const p = toPdfPt(e);
     setScanRect({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (tool === 'scan') {
+    if (tool === 'scan' || tool === 'match') {
       if (!scanRect || e.buttons !== 1) return;
       const p = toPdfPt(e);
       setScanRect({ ...scanRect, x1: p.x, y1: p.y });
@@ -465,10 +501,96 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleMouseUp = () => {
+    if (tool === 'match' && scanRect) {
+      const r = scanRect;
+      setScanRect(null);
+      void runMatch(r);
+      return;
+    }
     if (tool !== 'scan' || !scanRect) return;
     const r = scanRect;
     setScanRect(null);
     void runScan(r);
+  };
+
+  // --- Simbolių paieška šablonu (#1): rėmelis ant simbolio → ZNCC atitikmenys → QC ---
+  const runMatch = async (r: ScanRect) => {
+    if (!pdf) return;
+    const wPt = Math.abs(r.x1 - r.x0);
+    const hPt = Math.abs(r.y1 - r.y0);
+    if (wPt < 6 || hPt < 6) return;
+    setMatching(true);
+    setMatchError(null);
+    setMatchProgress(0);
+    try {
+      const page = await pdf.getPage(pageNum);
+      const vp1 = page.getViewport({ scale: 1 });
+      // Paieškos drobė: ~760 px pločio – pakankama raiška ir pakankamai greita
+      const s = Math.min(2, 760 / vp1.width);
+      const viewport = page.getViewport({ scale: s });
+      const c = document.createElement('canvas');
+      c.width = Math.floor(viewport.width);
+      c.height = Math.floor(viewport.height);
+      const cctx = c.getContext('2d')!;
+      cctx.fillStyle = '#fff';
+      cctx.fillRect(0, 0, c.width, c.height);
+      const rp: any = { canvas: c, canvasContext: cctx, viewport };
+      if (ocgConfigRef.current) rp.optionalContentConfigPromise = Promise.resolve(ocgConfigRef.current);
+      await page.render(rp).promise;
+
+      const { g: gRaw, w: iw, h: ih } = grayscaleFromCanvas(c);
+      // Binarizacija + dilatacija: plonos vektorinės linijos tampa atsparios subpikseliams
+      const g = binarizeDilate(gRaw, iw, ih);
+      const tx = Math.floor(Math.min(r.x0, r.x1) * s);
+      const ty = Math.floor(Math.min(r.y0, r.y1) * s);
+      const tw = Math.max(6, Math.round(wPt * s));
+      const th = Math.max(6, Math.round(hPt * s));
+      if (tw > 200 || th > 200) {
+        setMatchError('Šablono sritis per didelė (max ~200 px). Pažymėkite vieną simbolį – pvz., durų ar lango grafiklį.');
+        setMatching(false);
+        return;
+      }
+      const tpl = cropGray(g, iw, tx, ty, tw, th);
+      // Šablono miniatiūra peržiūrai
+      const tcan = document.createElement('canvas');
+      tcan.width = tw; tcan.height = th;
+      tcan.getContext('2d')!.drawImage(c, tx, ty, tw, th, 0, 0, tw, th);
+      setMatchThumb(tcan.toDataURL());
+
+      const found = await matchTemplate(g, iw, ih, tpl, tw, th, {
+        threshold: 0.6,
+        onProgress: setMatchProgress,
+      });
+      if (found.length === 0) {
+        setMatchError('Panašių simbolių nerasta. Pabandykite pažymėti tikslesnę sritį (tik simbolio kontūras, be teksto).');
+        setMatching(false);
+        return;
+      }
+      // Miniatiūros su kontekstu (1,8× šablono)
+      const results: SymbolMatch[] = found.map((m) => {
+        const cw = Math.round(tw * 1.8), ch = Math.round(th * 1.8);
+        const cx = Math.max(0, Math.min(iw - cw, Math.round(m.x - cw / 2)));
+        const cy = Math.max(0, Math.min(ih - ch, Math.round(m.y - ch / 2)));
+        const t2 = document.createElement('canvas');
+        t2.width = cw; t2.height = ch;
+        t2.getContext('2d')!.drawImage(c, cx, cy, cw, ch, 0, 0, cw, ch);
+        return { x: m.x / s, y: m.y / s, score: m.score, thumb: t2.toDataURL(), excluded: false };
+      });
+      setMatchResults(results);
+    } catch (err) {
+      console.error(err);
+      setMatchError('Simbolių paieška nepavyko. Bandykite dar kartą su mažesne sritimi.');
+    } finally {
+      setMatching(false);
+    }
+  };
+
+  const acceptMatches = () => {
+    if (!matchResults) return;
+    const pts = matchResults.filter((m) => !m.excluded).map((m) => ({ x: m.x, y: m.y }));
+    setMatchResults(null);
+    setMatchThumb(null);
+    if (pts.length > 0) openForm('count', pts);
   };
 
   const runScan = async (r: ScanRect) => {
@@ -537,6 +659,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     snapRef.current = null;
     snapPrevRef.current = null;
     setSnapIndicator(null);
+    setMatchResults(null);
+    setMatchThumb(null);
+    setMatchError(null);
     // Ilgio / ploto matavimui mastelis būtinas – nukreipiame į kalibravimą
     if ((t === 'length' || t === 'area') && !calibrated) {
       setTool('calib');
@@ -599,6 +724,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('length', <Spline className="h-3.5 w-3.5" />, 'Ilgis (sienos)')}
           {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, 'Plotas')}
           {toolBtn('count', <Hash className="h-3.5 w-3.5" />, 'Skaičiuoti')}
+          {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, 'Simboliai')}
           {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, 'Žiniaraštis (OCR)')}
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
@@ -775,6 +901,16 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   <line x1={snapIndicator.x * zoom} y1={snapIndicator.y * zoom - 10} x2={snapIndicator.x * zoom} y2={snapIndicator.y * zoom + 10} stroke="#0ea5e9" strokeWidth={1.5} />
                 </g>
               )}
+              {/* Simbolių paieškos atitikmenys */}
+              {matchResults?.map((m, i) => (
+                <g key={`m${i}`} pointerEvents="none" opacity={m.excluded ? 0.35 : 1}>
+                  <circle cx={m.x * zoom} cy={m.y * zoom} r={8} fill={m.excluded ? '#94a3b8' : '#f59e0b'} fillOpacity={0.3}
+                    stroke={m.excluded ? '#94a3b8' : '#f59e0b'} strokeWidth={2} />
+                  {m.excluded && (
+                    <line x1={m.x * zoom - 5} y1={m.y * zoom - 5} x2={m.x * zoom + 5} y2={m.y * zoom + 5} stroke="#ef4444" strokeWidth={2} />
+                  )}
+                </g>
+              ))}
               {/* OCR srities rėmelis */}
               {scanRect && (
                 <rect
@@ -828,6 +964,66 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             onSave={saveReview}
             onCancel={() => setReviewRows(null)}
           />
+        )}
+        {/* Simbolių paieška (#1) */}
+        {tool === 'match' && !matching && !matchResults && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            Nuspauskite ir užtempkite rėmelį ant <b>vieno simbolio</b> (durų, lango, gaubto, šviestuvo grafiklio) – programa ras visus identiškus puslapyje ir leis patikrinti prieš skaičiuojant.
+          </div>
+        )}
+        {matching && (
+          <div className="rounded-xl border p-3 text-sm">
+            <p className="font-medium">Ieškoma simbolių… {Math.round(matchProgress * 100)} %</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-amber-500 transition-all" style={{ width: `${matchProgress * 100}%` }} />
+            </div>
+          </div>
+        )}
+        {matchError && !matching && (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            ⚠️ {matchError}
+          </p>
+        )}
+        {matchResults && (
+          <div className="rounded-xl border p-3">
+            <div className="mb-2 flex items-center gap-2">
+              {matchThumb && <img src={matchThumb} alt="Šablonas" className="h-10 rounded border" />}
+              <div>
+                <p className="text-sm font-semibold">
+                  Rasta {matchResults.filter((m) => !m.excluded).length} iš {matchResults.length}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Spauskite miniatiūrą, kad išmestumėte klaidingą</p>
+              </div>
+            </div>
+            <div className="mb-3 grid max-h-56 grid-cols-4 gap-1.5 overflow-auto">
+              {matchResults.map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => setMatchResults((rs) => rs?.map((x, j) => (j === i ? { ...x, excluded: !x.excluded } : x)) ?? null)}
+                  className={`relative overflow-hidden rounded border ${m.excluded ? 'opacity-40 grayscale' : 'border-amber-400'}`}
+                  title={`Panašumas ${(m.score * 100).toFixed(0)} %`}
+                >
+                  <img src={m.thumb} alt={`atitikmuo ${i + 1}`} className="w-full" />
+                  {m.excluded && <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-red-600">✕</span>}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={acceptMatches}
+                disabled={matchResults.every((m) => m.excluded)}
+                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+              >
+                Įtraukti {matchResults.filter((m) => !m.excluded).length} vnt.
+              </button>
+              <button
+                onClick={() => { setMatchResults(null); setMatchThumb(null); }}
+                className="rounded-lg border px-3 py-2 text-xs hover:bg-muted"
+              >
+                Atšaukti
+              </button>
+            </div>
+          </div>
         )}
         {!reviewRows && !scanning && (
           <button
@@ -922,6 +1118,39 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 <input value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })}
                   inputMode="decimal" className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
               </label>
+            )}
+            {form.kind === 'area' && form.category === 'room' && (
+              <div className="rounded-md border border-violet-200 bg-violet-50 p-2.5 dark:border-violet-900 dark:bg-violet-950">
+                <label className="flex items-center gap-2 text-xs font-medium text-violet-900 dark:text-violet-200">
+                  <input
+                    type="checkbox"
+                    checked={form.genFinishes !== false}
+                    onChange={(e) => setForm({ ...form, genFinishes: e.target.checked })}
+                  />
+                  Generuoti apdailos pozicijas (grindys, lubos, sienos)
+                </label>
+                {form.genFinishes !== false && (
+                  <div className="mt-2 flex items-center gap-3">
+                    <label className="text-xs text-violet-900 dark:text-violet-200">
+                      Aukštis (m)
+                      <input
+                        value={form.roomHeight ?? '2.7'}
+                        onChange={(e) => setForm({ ...form, roomHeight: e.target.value })}
+                        inputMode="decimal"
+                        className="ml-1.5 h-7 w-16 rounded-md border bg-background px-1.5 text-xs"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-violet-900 dark:text-violet-200">
+                      <input
+                        type="checkbox"
+                        checked={form.deductOpenings !== false}
+                        onChange={(e) => setForm({ ...form, deductOpenings: e.target.checked })}
+                      />
+                      Atimti angas (≥0,5 m²)
+                    </label>
+                  </div>
+                )}
+              </div>
             )}
             {(form.kind === 'length' || form.kind === 'area') && (
               <label className="block text-xs">

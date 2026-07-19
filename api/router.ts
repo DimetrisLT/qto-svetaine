@@ -1,6 +1,7 @@
 import { authRouter } from "./auth-router";
 import { projectsRouter } from "./projects-router";
 import { sharesRouter } from "./shares-router";
+import { versionsRouter } from "./versions-router";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -8,6 +9,7 @@ export const appRouter = createRouter({
   auth: authRouter,
   projects: projectsRouter,
   shares: sharesRouter,
+  versions: versionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

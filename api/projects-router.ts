@@ -7,6 +7,7 @@ import {
   findProjectsByUser,
   updateProject,
 } from "./queries/projects";
+import { createVersion, deleteVersionsByProject } from "./queries/versions";
 
 const MAX_PROJECT_BYTES = 5 * 1024 * 1024; // 5 MB – užtenka ~50 tūkst. pozicijų
 
@@ -41,6 +42,13 @@ export const projectsRouter = createRouter({
         data: input.data,
         itemCount: input.itemCount,
       });
+      // Pirmoji istorijos versija – pradinė būsena
+      await createVersion({
+        projectId: id,
+        userId: ctx.user.id,
+        itemCount: input.itemCount,
+        data: input.data,
+      });
       return { id };
     }),
 
@@ -56,12 +64,22 @@ export const projectsRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       await updateProject(id, ctx.user.id, data);
+      // Versijų istorija: kaskart įrašant – nauja momentinė kopija
+      if (data.data && data.itemCount !== undefined) {
+        await createVersion({
+          projectId: id,
+          userId: ctx.user.id,
+          itemCount: data.itemCount,
+          data: data.data,
+        });
+      }
       return { ok: true };
     }),
 
   remove: authedQuery
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
+      await deleteVersionsByProject(input.id, ctx.user.id);
       await deleteProject(input.id, ctx.user.id);
       return { ok: true };
     }),

@@ -78,7 +78,7 @@ export default function IfcSection({ fileName, onData }: Props) {
             <Stat label="Vienetai" value={result.stats.unitLabel} />
           </div>
           {result.geometries.length > 0
-            ? <IfcViewer geometries={result.geometries} />
+            ? <IfcViewer geometries={result.geometries} items={result.items} />
             : <p className="rounded-lg border p-4 text-sm text-muted-foreground">Modelyje nerasta 3D geometrijos šioms klasėms – rodomos tik lentelės.</p>}
           <div className="flex gap-2">
             <button

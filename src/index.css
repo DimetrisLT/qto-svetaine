@@ -73,3 +73,21 @@
     @apply bg-background text-foreground;
   }
 }
+/* PDF ataskaitos spausdinimas: matoma tik ataskaitos šaknis */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-report-root,
+  .print-report-root * {
+    visibility: visible;
+  }
+  .print-report-root {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: visible !important;
+  }
+  @page {
+    margin: 14mm;
+  }
+}

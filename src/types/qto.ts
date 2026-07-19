@@ -33,6 +33,8 @@ export interface QtoItem {
   source: SourceType;
   category: ElementCategory;
   ifcClass?: string;
+  /** IFC elemento expressID – 3D vaizdo ir žiniaraščio susiejimui */
+  ifcExpressId?: number;
   name: string;
   material?: string;
   length_m?: number;

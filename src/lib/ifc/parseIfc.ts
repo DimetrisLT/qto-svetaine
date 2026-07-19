@@ -317,6 +317,7 @@ export async function parseIfcFile(
         source: 'IFC',
         category,
         ifcClass: cls,
+        ifcExpressId: id,
         name,
         material,
         length_m: length_m ?? geoLen,

@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { FileSpreadsheet, ClipboardCopy } from 'lucide-react';
+import { FileSpreadsheet, ClipboardCopy, FileText } from 'lucide-react';
 import SummaryCards from '@/components/SummaryCards';
 import QtoTable from '@/components/QtoTable';
 import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
 import AssemblyPanel from '@/components/AssemblyPanel';
 import EditItemDialog from '@/components/EditItemDialog';
+import PrintReport from '@/components/PrintReport';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
@@ -22,6 +23,7 @@ interface Props {
 export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems, onUpdateItem }: Props) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<QtoItem | null>(null);
+  const [showReport, setShowReport] = useState(false);
   const items = useMemo(
     () => [...itemsBySource.IFC, ...itemsBySource.PDF, ...itemsBySource.DXF],
     [itemsBySource],
@@ -57,6 +59,13 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
           className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-40"
         >
           <ClipboardCopy className="h-4 w-4" /> {copied ? '✓ Nukopijuota!' : 'Kopijuoti CSV'}
+        </button>
+        <button
+          onClick={() => setShowReport(true)}
+          disabled={items.length === 0}
+          className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-40"
+        >
+          <FileText className="h-4 w-4" /> PDF ataskaita
         </button>
       </div>
 
@@ -96,6 +105,10 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
       <div className={`rounded-xl border p-4 ${warns ? 'border-amber-300' : 'border-emerald-300'}`}>
         <SelfCheckPanel checks={checks} />
       </div>
+
+      {showReport && (
+        <PrintReport items={items} metas={metas} onClose={() => setShowReport(false)} />
+      )}
 
       {editing && (
         <EditItemDialog

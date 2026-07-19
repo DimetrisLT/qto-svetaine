@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Building2, FolderOpen, Link2, LogOut, Plus, Trash2 } from 'lucide-react';
+import { Building2, FolderOpen, History, Link2, LogOut, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import { LOGIN_PATH } from '@/const';
@@ -26,6 +26,19 @@ export default function Portal() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const shareCreate = trpc.shares.create.useMutation();
   const shareRevoke = trpc.shares.revoke.useMutation();
+  // Versijų istorija
+  const [historyFor, setHistoryFor] = useState<number | null>(null);
+  const versions = trpc.versions.list.useQuery(
+    { projectId: historyFor! },
+    { enabled: historyFor !== null },
+  );
+  const restore = trpc.versions.restore.useMutation({
+    onSuccess: () => {
+      utils.projects.list.invalidate();
+      utils.versions.list.invalidate();
+      setHistoryFor(null);
+    },
+  });
 
   const shareUrlFor = (token: string) => `${window.location.origin}/v/${token}`;
 
@@ -136,6 +149,12 @@ export default function Portal() {
                     <Link2 className="h-3.5 w-3.5" /> Dalintis peržiūra
                   </button>
                 )}
+                <button
+                  onClick={() => setHistoryFor(p.id)}
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  <History className="h-3.5 w-3.5" /> Istorija
+                </button>
                 {confirmId === p.id ? (
                   <>
                     <button
@@ -161,6 +180,50 @@ export default function Portal() {
           ))}
         </div>
       </main>
+
+      {/* Versijų istorijos dialogas */}
+      {historyFor !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setHistoryFor(null)}>
+          <div className="w-full max-w-md rounded-xl bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-1 font-semibold">Versijų istorija</h2>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Momentinė kopija sukuriama kaskart įrašant projektą (laikomos paskutinės 20).
+            </p>
+            {versions.isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Kraunama…</p>}
+            {versions.data?.length === 0 && (
+              <p className="py-4 text-center text-sm text-muted-foreground">Versijų dar nėra.</p>
+            )}
+            <div className="max-h-80 space-y-1.5 overflow-auto">
+              {versions.data?.map((v, i) => (
+                <div key={v.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {new Date(v.createdAt).toLocaleString('lt-LT', { dateStyle: 'short', timeStyle: 'short' })}
+                      {i === 0 && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">dabartinė</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{v.itemCount} pozicijos</p>
+                  </div>
+                  {i > 0 && (
+                    <button
+                      onClick={() => restore.mutate({ versionId: v.id })}
+                      disabled={restore.isPending}
+                      className="rounded-lg border px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                    >
+                      Atkurti
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setHistoryFor(null)}
+              className="mt-4 w-full rounded-lg border px-3 py-2 text-xs font-medium hover:bg-muted"
+            >
+              Uždaryti
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="mx-auto mt-10 max-w-5xl border-t px-4 pt-4 pb-8">
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
