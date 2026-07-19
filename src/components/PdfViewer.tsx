@@ -27,12 +27,16 @@ interface PendingForm {
 }
 
 interface Props {
+  fileId: string;
   file: File;
+  discipline: string;
+  unitsPerMeter: number | null;
+  onCalibrate: (upm: number | null) => void;
   items: QtoItem[];
-  onChange: (items: QtoItem[], meta: { scaleCalibrated: boolean }) => void;
+  onItemsChange: (items: QtoItem[]) => void;
 }
 
-export default function PdfViewer({ file, items, onChange }: Props) {
+export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, items, onItemsChange }: Props) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(1);
@@ -41,7 +45,6 @@ export default function PdfViewer({ file, items, onChange }: Props) {
   const [current, setCurrent] = useState<Pt[]>([]);
   const [calibPts, setCalibPts] = useState<Pt[]>([]);
   const [calibInput, setCalibInput] = useState('');
-  const [unitsPerMeter, setUnitsPerMeter] = useState<number | null>(null);
   const [form, setForm] = useState<PendingForm | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
@@ -180,30 +183,30 @@ export default function PdfViewer({ file, items, onChange }: Props) {
       pdfKind: form.kind,
       pdfPoints: form.pts,
       pdfPage: pageNum,
+      pdfFile: fileId,
+      discipline,
       note: !calibrated ? 'Mastelis nekalibruotas – reikšmės sąlyginės' : undefined,
     };
-    onChange([...items, item], { scaleCalibrated: calibrated });
+    onItemsChange([...items, item]);
     setForm(null);
   };
 
   const removeItem = (id: string) => {
-    onChange(items.filter((i) => i.id !== id), { scaleCalibrated: calibrated });
+    onItemsChange(items.filter((i) => i.id !== id));
   };
 
   const applyCalibration = () => {
     const real = parseFloat(calibInput.replace(',', '.'));
     if (calibPts.length === 2 && real > 0) {
-      setUnitsPerMeter(dist(calibPts[0], calibPts[1]) / real);
+      onCalibrate(dist(calibPts[0], calibPts[1]) / real);
       setTool('none');
-      onChange(items, { scaleCalibrated: true });
     }
   };
 
   const resetCalibration = () => {
-    setUnitsPerMeter(null);
+    onCalibrate(null);
     setCalibPts([]);
     setCalibInput('');
-    onChange(items, { scaleCalibrated: false });
   };
 
   const liveLength = current.length >= 2 ? toMeters(polylineLength(current, false)) : undefined;
@@ -284,7 +287,25 @@ export default function PdfViewer({ file, items, onChange }: Props) {
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
           <span className="mx-1 h-5 w-px bg-border" />
           <button disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
-          <span className="text-xs tabular-nums">{pageNum} / {numPages}</span>
+          <span className="flex items-center gap-1 text-xs tabular-nums">
+            <input
+              key={pageNum}
+              defaultValue={pageNum}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const n = parseInt((e.target as HTMLInputElement).value, 10);
+                  if (n >= 1 && n <= numPages) setPageNum(n);
+                }
+              }}
+              onBlur={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (n >= 1 && n <= numPages && n !== pageNum) setPageNum(n);
+              }}
+              className="h-7 w-11 rounded-md border bg-background px-1 text-center text-xs"
+              title="Puslapio numeris (Enter – peršokti)"
+            />
+            / {numPages}
+          </span>
           <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="rounded-lg border p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
           {current.length > 0 && (
             <>
@@ -375,7 +396,15 @@ export default function PdfViewer({ file, items, onChange }: Props) {
               Kategorija
               <select
                 value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value as ElementCategory })}
+                onChange={(e) => {
+                  const cat = e.target.value as ElementCategory;
+                  const autoName = `${CATEGORY_INFO[form.category].lt} (PDF p.${pageNum})`;
+                  setForm({
+                    ...form,
+                    category: cat,
+                    name: form.name === autoName ? `${CATEGORY_INFO[cat].lt} (PDF p.${pageNum})` : form.name,
+                  });
+                }}
                 className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
               >
                 {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_INFO[c].lt}</option>)}

@@ -29,11 +29,17 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
       }
     }
     if (m.source === 'PDF') {
-      if (!m.scaleCalibrated) {
+      const files = m.pdfFiles ?? [];
+      const uncal = files.filter((f) => !f.calibrated);
+      if (files.length > 0) {
+        add('completeness', 'PDF projekto failai', 'ok',
+          `Projektas: ${files.length} failai (${files.map((f) => `${f.discipline}`).join(', ')}). Visi matavimai sueina į bendrą žiniaraštį.`);
+      }
+      if (uncal.length > 0) {
         add('completeness', 'PDF mastelio kalibravimas', 'warn',
-          'PDF brėžiniui mastelis nesukalibruotas – matavimai būtų netikslūs. Sukaibruokite dviejų žinomų taškų atstumu.');
-      } else {
-        add('completeness', 'PDF mastelio kalibravimas', 'ok', 'Mastelis sukalibruotas.');
+          `Nesukalibruoti failai: ${uncal.map((f) => `„${f.name}“`).join(', ')}. Kiekvienam failui sukalibruokite mastelį dviejų žinomų taškų atstumu.`);
+      } else if (files.length > 0) {
+        add('completeness', 'PDF mastelio kalibravimas', 'ok', 'Visiems PDF failams mastelis sukalibruotas.');
       }
     }
     if (m.source === 'DXF') {

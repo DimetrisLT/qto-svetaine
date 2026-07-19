@@ -13,6 +13,9 @@ export type ElementCategory =
   | 'roof'
   | 'footing'
   | 'room'
+  | 'fin_wall'
+  | 'fin_floor'
+  | 'fin_ceiling'
   | 'other';
 
 export type MeasureUnit = 'vnt.' | 'm' | 'm²' | 'm³';
@@ -40,7 +43,38 @@ export interface QtoItem {
   pdfKind?: 'length' | 'area' | 'count';
   pdfPoints?: Array<{ x: number; y: number }>;
   pdfPage?: number;
+  /** PDF: kuriam projekto failui priklauso matavimas */
+  pdfFile?: string;
+  /** Projekto dalis (A, SK, VK, E, Š, V, T, Kita) */
+  discipline?: string;
   note?: string;
+}
+
+/** Projekto dalys (disciplines) */
+export const DISCIPLINES: Array<{ code: string; lt: string }> = [
+  { code: 'A', lt: 'Architektūra' },
+  { code: 'SK', lt: 'Statybinės konstrukcijos' },
+  { code: 'VK', lt: 'Vandentiekis / kanalizacija' },
+  { code: 'Š', lt: 'Šildymas' },
+  { code: 'V', lt: 'Vėdinimas' },
+  { code: 'E', lt: 'Elektra' },
+  { code: 'T', lt: 'Technologinė dalis' },
+  { code: 'Kita', lt: 'Kita' },
+];
+
+/** Automatinis dalies atpažinimas iš failo pavadinimo */
+export function detectDiscipline(fileName: string): string {
+  const n = fileName.toUpperCase();
+  // „Žodžio“ ribos: _, -, tarpai, skaičiai laikomi skirtukais (pvz., „A_20260119“)
+  const word = (c: string) => new RegExp(`(^|[^A-Z0-9ŠĖ])${c}([^A-Z0-9ŠĖ]|$)`).test(n);
+  if (word('SK') || /KONSTRUK/.test(n)) return 'SK';
+  if (word('VK') || /VANDEN|KANALIZ/.test(n)) return 'VK';
+  if (word('Š') || /ŠILD|SILDY/.test(n)) return 'Š';
+  if (word('V') || /VĖDIN|VENTIL/.test(n)) return 'V';
+  if (word('E') || /ELEKTR/.test(n)) return 'E';
+  if (word('T') || /TECHNOLOG/.test(n)) return 'T';
+  if (word('A') || /ARCHITEKT/.test(n)) return 'A';
+  return 'Kita';
 }
 
 export interface CheckResult {
@@ -67,6 +101,8 @@ export interface SourceMeta {
   spaceArea_m2?: number;
   /** PDF: ar sukalibruotas mastelis */
   scaleCalibrated?: boolean;
+  /** PDF: projekto failų sąrašas su kalibravimo būsena */
+  pdfFiles?: Array<{ id: string; name: string; discipline: string; calibrated: boolean }>;
   /** DXF: sluoksniai, nepriskirti jokiai kategorijai */
   unassignedLayers?: string[];
   /** DXF: vienetų koeficientas į metrus */
@@ -89,12 +125,15 @@ export const CATEGORY_INFO: Record<ElementCategory, CategoryInfo> = {
   roof: { lt: 'Stogas', color: '#84cc16' },
   footing: { lt: 'Pamatų elementai', color: '#b45309' },
   room: { lt: 'Patalpos', color: '#64748b' },
+  fin_wall: { lt: 'Sienų apdaila', color: '#fb923c' },
+  fin_floor: { lt: 'Grindų apdaila', color: '#eab308' },
+  fin_ceiling: { lt: 'Lubų apdaila', color: '#c084fc' },
   other: { lt: 'Kita', color: '#9ca3af' },
 };
 
 export const CATEGORY_ORDER: ElementCategory[] = [
   'wall', 'slab', 'column', 'beam', 'roof', 'stair',
-  'footing', 'door', 'window', 'room', 'other',
+  'footing', 'door', 'window', 'fin_wall', 'fin_floor', 'fin_ceiling', 'room', 'other',
 ];
 
 let counter = 0;

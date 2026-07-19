@@ -68,6 +68,7 @@ export default function QtoTable({ items, onDelete, showSource = true, compact =
           <thead className="bg-muted/60 sticky top-0">
             <tr className="text-left">
               {showSource && <th className="px-3 py-2 font-medium">Šaltinis</th>}
+              {showSource && <th className="px-3 py-2 font-medium">Dalis</th>}
               <th className="px-3 py-2 font-medium">Kategorija</th>
               <th className="px-3 py-2 font-medium">Pavadinimas</th>
               <th className="px-3 py-2 font-medium">Medžiaga</th>

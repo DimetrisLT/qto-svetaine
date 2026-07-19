@@ -1,6 +1,7 @@
 # QTO – Statybos kiekių surinkimas
 
-Programa automatiškai suranda statybos kiekius iš **IFC**, **PDF** ir **DXF** failų.
+Programa automatiškai suranda statybos kiekius iš **IFC**, **PDF** ir **DXF** failų
+ir suformuoja bendrą **darbų kiekių žiniaraštį** – pagrindą detaliosioms sąmatoms.
 Viskas skaičiuojama jūsų naršyklėje – failai niekur nesiunčiami į serverį.
 
 ## Funkcijos
@@ -8,9 +9,9 @@ Viskas skaičiuojama jūsų naršyklėje – failai niekur nesiunčiami į serve
 | Formatas | Režimas | Ką gaunate |
 |---|---|---|
 | **IFC** | Pilnai automatinis | Kiekiai (ilgis, plotas, tūris), medžiagos, 3D vaizdas su spalvų koduote, kryžminis tūrių patikrinimas |
-| **PDF** | Pusiau automatinis | Mastelio kalibravimas 2 taškais → ilgių, plotų, tūrių ir vnt. skaičiavimas pažymėjus brėžinyje |
-| **DXF** | Pusiau automatinis | Sluoksnių ilgiai, uždarų kontūrų plotai, blokų kiekis → priskyrimas kategorijoms (sienos, perdangos…) |
-| **Ataskaita** | – | Suvestinė pagal kategorijas, savikontrolė (✅/⚠️), Excel (XLSX) eksportas, CSV kopijavimas |
+| **PDF (projektas)** | Pusiau automatinis | Keli susiję failai vienu metu (A, SK, VK, E, Š, V dalys): kiekvienam – savas mastelio kalibravimas, visi matavimai sueina į vieną žiniaraštį |
+| **DXF** | Pusiau automatinis | Sluoksnių ilgiai, uždarų kontūrų plotai, blokų kiekis → priskyrimas kategorijoms |
+| **Žiniaraštis** | Automatinis | Kiekiai sugrupuoti pagal darbų grupes (pamatams, sienoms, perdangoms, stogui, langams, durims, apdailai) su pozicijų numeriais – paruošta sąmatoms |
 
 > **DWG?** Palaikomas DXF formatas. DWG konvertuokite nemokamai: *ODA File Converter* arba *LibreCAD* (DWG → DXF).
 
@@ -49,15 +50,32 @@ npm run build    # sugeneruoja dist/ (ją kelkite į Hostinger)
 
 ## Kaip naudotis
 
-1. **IFC kortelė** – įkelkite `.ifc` modelį; kiekiai suskaičiuojami automatiškai, apačioje pamatysite 3D modelį (galite slėpti/rodyti kategorijas).
-2. **PDF kortelė** – įkelkite brėžinį, spauskite **„Mastelis“**, pažymėkite du žinomus taškus (pvz., ašių sankirtas) ir įveskite realų atstumą metrais. Tada rinkitės **„Ilgis“** (sienoms), **„Plotas“** (perdangoms/patalpoms) arba **„Skaičiuoti“** (kolonoms, durims, langams), žymėkite brėžinyje, spauskite **„Baigti“** ir užpildykite formą (aukštis, storis, medžiaga).
-3. **DXF kortelė** – įkelkite `.dxf`, pasirinkite brėžinio vienetus (mm/cm/m), kiekvienam sluoksniui priskirkite kategoriją ir matmenis → **„Įtraukti“**.
-4. **Ataskaita** – bendra suvestinė iš visų šaltinių, savikontrolės patikrinimai ir **Excel** eksportas.
+### PDF projektas (keli failai – viena visuma)
+
+1. **PDF kortelėje** įkelkite pirmą failą (pvz., architektūros dalį „A“).
+2. Spauskite **„Pridėti PDF“** – įkelkite kitas dalis (SK, VK, E…). Programa dalį atpažįsta iš failo pavadinimo, bet galite pakeisti išskleidžiamuoju meniu.
+3. **Kiekvienam failui atskirai sukalibruokite mastelį**: atidarykite failą, spauskite „Mastelis“, pažymėkite du žinomus taškus (pvz., ašių 1→4 sankirtas) ir įveskite realų atstumą metrais.
+4. Matuokite: **„Ilgis“** (sienoms), **„Plotas“** (perdangoms, patalpoms, apdailai), **„Skaičiuoti“** (poliams, kolonoms, langams, durims). Baigę žymėti spauskite **„Baigti“** ir užpildykite formą.
+5. Perjunginėkite failus viršuje esančiomis kortelėmis – visi matavimai kaupiami kartu.
+6. Dideliems failams naudokite **puslapio numerio lauką** įrankių juostoje (įveskite numerį ir Enter).
+
+### Kiti šaltiniai
+
+- **IFC kortelė** – įkelkite `.ifc` modelį; kiekiai suskaičiuojami automatiškai, matysite 3D modelį.
+- **DXF kortelė** – pasirinkite vienetus (mm/cm/m), sluoksniams priskirkite kategorijas → „Įtraukti“.
+
+### Žiniaraštis ir ataskaita
+
+**Ataskaitos** kortelėje:
+- **Darbų kiekių žiniaraštis** – visų šaltinių kiekiai, sugrupuoti pagal darbų grupes su pozicijų numeriais (02.1, 02.2…) ir šaltinių žymomis (PDF/A, PDF/SK, IFC, DXF).
+- **Kiekių suvestinė (detaliai)** – visos eilutės su matmenimis ir medžiagomis.
+- **Savikontrolė** – ✅/⚠️ patikrinimai: kalibravimai, tūrių kryžminis sutikrinimas (IFC), logika, pilnumas.
+- **Excel (XLSX)** – 4 lapai: *Žiniaraštis*, *Santrauka*, *Detaliai*, *Savikontrolė*. Tiesiogiai tinka sąmatoms.
 
 ## Savikontrolė
 
 Programa automatiškai tikrina:
-- **Pilnumą** – ar visi elementai/sluoksniai įtraukti, ar PDF mastelis sukalibruotas;
+- **Pilnumą** – ar visi PDF failai sukalibruoti, ar visi DXF sluoksniai priskirti, ar IFC elementai turi kiekius;
 - **Geometriją** – IFC deklaruoti tūriai lyginami su tūriais iš 3D geometrijos (±20 %), perdangų plotas su patalpų plotu;
 - **Logiką** – nuliniai/neigiami matmenys, trūkstamos medžiagos.
 

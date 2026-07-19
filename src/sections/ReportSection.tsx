@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { FileSpreadsheet, ClipboardCopy } from 'lucide-react';
 import SummaryCards from '@/components/SummaryCards';
 import QtoTable from '@/components/QtoTable';
+import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
@@ -55,7 +56,15 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem }: Pr
       </div>
 
       <div>
-        <h3 className="mb-2 text-lg font-semibold">Kiekių suvestinė</h3>
+        <h3 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h3>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Kiekiai iš visų šaltinių (IFC, PDF dalys, DXF) sugrupuoti pagal darbų grupes – pagrindas detaliosioms sąmatoms.
+        </p>
+        <ZiniarastisTable items={items} />
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-lg font-semibold">Kiekių suvestinė (detaliai)</h3>
         <QtoTable
           items={items}
           onDelete={(id) => {

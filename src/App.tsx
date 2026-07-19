@@ -91,7 +91,6 @@ export default function App() {
           )}
           {tab === 'pdf' && (
             <PdfSection
-              fileName={metas.PDF.fileName}
               items={itemsBySource.PDF}
               onData={handleData('PDF')}
             />
