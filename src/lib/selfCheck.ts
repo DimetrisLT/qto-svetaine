@@ -3,6 +3,7 @@ import { CATEGORY_INFO, type CheckResult, type QtoItem, type SourceMeta } from '
 import { fmt } from '@/lib/format';
 import { polygonArea } from '@/lib/pdf/measure';
 import { estimateOverlapRatio } from '@/lib/geometry2d';
+import { computeBenchmarks } from '@/lib/benchmarks';
 
 export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResult[] {
   const checks: CheckResult[] = [];
@@ -298,6 +299,12 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   if (dupNames.length > 0) {
     add('geometry', 'Pasikartojančios projekto pozicijos', 'warn',
       `${dupNames.length} pozicijos įtrauktos daugiau nei vieną kartą: ${dupNames.slice(0, 3).map(([n, c]) => `„${n.split('|')[0]}“ ×${c}`).join('; ')}. Jei tai skirtingi brėžinių lapai – ignoruokite, jei tas pats žiniaraštis – palikite vieną.`);
+  }
+
+  // 11) Rodiklių „sveiko proto“ patikra (benchmark): santykiai prieš tipines normas
+  for (const b of computeBenchmarks(items)) {
+    if (b.status === 'na') continue;
+    add('logic', `Rodiklis: ${b.label}`, b.status, b.details);
   }
 
   return checks;

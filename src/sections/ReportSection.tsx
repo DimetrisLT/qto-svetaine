@@ -4,6 +4,7 @@ import SummaryCards from '@/components/SummaryCards';
 import QtoTable from '@/components/QtoTable';
 import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
+import AssemblyPanel from '@/components/AssemblyPanel';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
@@ -13,9 +14,10 @@ interface Props {
   itemsBySource: Record<SourceType, QtoItem[]>;
   metas: SourceMeta[];
   onDeleteItem: (source: SourceType, id: string) => void;
+  onAddItems: (source: SourceType, newItems: QtoItem[]) => void;
 }
 
-export default function ReportSection({ itemsBySource, metas, onDeleteItem }: Props) {
+export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems }: Props) {
   const [copied, setCopied] = useState(false);
   const items = useMemo(
     () => [...itemsBySource.IFC, ...itemsBySource.PDF, ...itemsBySource.DXF],
@@ -54,6 +56,19 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem }: Pr
           <ClipboardCopy className="h-4 w-4" /> {copied ? '✓ Nukopijuota!' : 'Kopijuoti CSV'}
         </button>
       </div>
+
+      <AssemblyPanel
+        items={items}
+        onAdd={(lines) => {
+          const bySource = new Map<SourceType, QtoItem[]>();
+          for (const l of lines) {
+            const arr = bySource.get(l.source) ?? [];
+            arr.push(l);
+            bySource.set(l.source, arr);
+          }
+          for (const [src, arr] of bySource) onAddItems(src, arr);
+        }}
+      />
 
       <div>
         <h3 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h3>

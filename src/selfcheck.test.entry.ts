@@ -2,6 +2,8 @@
 import { runSelfChecks } from '@/lib/selfCheck';
 import { detectScaleFromText, paperFromPoints, unitsPerMeterFor, suggestForPage, deviationPct } from '@/lib/pdf/scaleDetect';
 import { saveProject, loadProject, clearProject, parseProjectJson, totalItems } from '@/lib/projectStore';
+import { ASSEMBLY_TEMPLATES, applyAssembly, canApply } from '@/lib/assemblies';
+import { computeBenchmarks, computeTotals } from '@/lib/benchmarks';
 import type { QtoItem, SourceMeta } from '@/types/qto';
 
 // localStorage imitacija Node aplinkai
@@ -179,6 +181,57 @@ t('parseProjectJson blogas JSON → null', parseProjectJson('{ne json') === null
 t('parseProjectJson bloga versija → null', parseProjectJson(JSON.stringify({ version: 2, itemsBySource: {}, metas: {} })) === null);
 clearProject();
 t('clearProject', loadProject() === null);
+
+// --- assemblies (#2) ---
+console.log('assemblies:');
+const wallTpl = ASSEMBLY_TEMPLATES.find((t) => t.id === 'wall_len')!;
+const wallSrc: QtoItem = { ...base, id: 'w', category: 'wall', name: 'Siena S-1', unit: 'm', length_m: 10, origin: 'ai' };
+t('canApply: ilgis tinka sienai', canApply(wallTpl, wallSrc));
+t('canApply: be ilgio netinka', !canApply(wallTpl, { ...wallSrc, length_m: undefined }));
+const wallLines = applyAssembly(wallTpl, wallSrc, { h: 3, d: 0.25, r: 150 });
+t('siena → 4 eilutės', wallLines.length === 4);
+const bet = wallLines.find((l) => l.name.startsWith('Betonas'))!;
+t('betonas = L·h·d', Math.abs(bet.count - 7.5) < 1e-9 && bet.unit === 'm³' && bet.volume_m3 === bet.count);
+const kof = wallLines.find((l) => l.name.startsWith('Kofanas'))!;
+t('kofanas = 2·L·h', Math.abs(kof.count - 60) < 1e-9 && kof.unit === 'm²');
+const arm = wallLines.find((l) => l.name.startsWith('Armatūra'))!;
+t('armatūra = V·r', Math.abs(arm.count - 1125) < 1e-9 && arm.unit === 'kg' && arm.mass_kg === arm.count);
+const tink = wallLines.find((l) => l.name.startsWith('Tinkas'))!;
+t('tinkas → fin_wall', tink.category === 'fin_wall' && Math.abs(tink.count - 60) < 1e-9);
+t('eilutė rodo formulę', bet.note !== undefined && bet.note.includes('×'));
+const colTpl = ASSEMBLY_TEMPLATES.find((t) => t.id === 'column')!;
+const colLines = applyAssembly(colTpl, { ...wallSrc, category: 'column', length_m: 3 }, { a: 0.4, b: 0.4, r: 250 });
+t('kolona: betonas = a·b·h', Math.abs(colLines[0].count - 0.48) < 1e-9);
+t('kolona: kofanas = perimetras × h', Math.abs(colLines[1].count - 4.8) < 1e-9);
+const slabTpl = ASSEMBLY_TEMPLATES.find((t) => t.id === 'slab')!;
+const slabLines = applyAssembly(slabTpl, { ...wallSrc, category: 'slab', unit: 'm²', area_m2: 50, length_m: undefined }, { d: 0.2, r: 100 });
+t('perdanga: betonas = A·d', Math.abs(slabLines[0].count - 10) < 1e-9);
+
+// --- benchmarks (#4) ---
+console.log('benchmarks:');
+const okSet: QtoItem[] = [
+  { ...base, id: 'b1', category: 'slab', name: 'Betonas', unit: 'm³', count: 40, volume_m3: 40, material: 'Betonas' },
+  { ...base, id: 'b2', category: 'slab', name: 'Perdangos plotas', unit: 'm²', count: 100, area_m2: 100 },
+  { ...base, id: 'b3', category: 'slab', name: 'Armatūra', unit: 'kg', count: 4000, mass_kg: 4000, material: 'Armatūra' },
+  { ...base, id: 'b4', category: 'wall', name: 'Kofanas', unit: 'm²', count: 400, area_m2: 400 },
+];
+const bm = computeBenchmarks(okSet);
+t('betonas/m² ok', bm.find((b) => b.id === 'concrete_per_floor')?.status === 'ok');
+t('armatūra kg/m³ ok', bm.find((b) => b.id === 'rebar_per_concrete')?.status === 'ok');
+t('kofanas/m³ ok', bm.find((b) => b.id === 'formwork_per_concrete')?.status === 'ok');
+const badSet: QtoItem[] = [
+  { ...base, id: 'b1', category: 'slab', name: 'Betonas', unit: 'm³', count: 400, volume_m3: 400, material: 'Betonas' },
+  { ...base, id: 'b2', category: 'slab', name: 'Perdangos plotas', unit: 'm²', count: 100, area_m2: 100 },
+];
+const bmBad = computeBenchmarks(badSet);
+t('10× mastelio klaida → warn', bmBad.find((b) => b.id === 'concrete_per_floor')?.status === 'warn');
+t('be duomenų → na', computeBenchmarks([base]).every((b) => b.status === 'na'));
+const totals = computeTotals(okSet);
+t('totals: betonas 40 m³', totals.concrete_m3 === 40 && totals.floorArea_m2 === 100);
+checks = runSelfChecks(okSet, pdfMeta);
+t('savikontrolėje rodomi rodikliai', checks.some((c) => c.label.startsWith('Rodiklis:') && c.status === 'ok'));
+checks = runSelfChecks(badSet, pdfMeta);
+t('savikontrolė įspėja dėl rodiklio', checks.some((c) => c.label === 'Rodiklis: Betonas / grindų plotas' && c.status === 'warn'));
 
 console.log(`\nREZULTATAS: ${pass} ✓ / ${fail} ✗`);
 if (fail > 0) throw new Error(`${fail} testų nepavyko`);

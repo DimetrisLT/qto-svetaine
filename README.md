@@ -13,39 +13,73 @@ Viskas skaičiuojama jūsų naršyklėje – failai niekur nesiunčiami į serve
 | **PDF žiniaraščiai (OCR)** | Automatinis su patvirtinimu | Pažymėkite žiniaraščio lentelę brėžinyje – programa nuskaito pozicijas (pavadinimas, vnt., kiekis, m³/vnt., betono klasė) ir įtraukia kaip **projekto duomenis** |
 | **DXF** | Pusiau automatinis | Sluoksnių ilgiai, uždarų kontūrų plotai, blokų kiekis → priskyrimas kategorijoms |
 | **Žiniaraštis** | Automatinis | Kiekiai sugrupuoti pagal darbų grupes (pamatams, sienoms, perdangoms, stogui, langams, durims, apdailai) su pozicijų numeriais – paruošta sąmatoms |
+| **Kompozitiniai darbai** | Pusiau automatinis | Vienas matavimas → kelios eilutės: betonas, kofanas (kontaktinio paviršiaus taisyklės), armatūra (kg/m³ įvertis), apdaila. Kiekviena eilutė rodo formulę |
+| **Rodiklių patikra** | Automatinis | Betonas m³/m², armatūra kg/m³, kofanas m²/m³, apdaila m²/m² lyginami su tipiniais diapazonais – sugando eilinio dydžio klaidas |
+| **Tęstinumas** | Automatinis | Darbas išsaugomas naršyklėje; prisijungus – debesyje (portalas „Mano projektai“); JSON eksportas/importas |
 
 > **DWG?** Palaikomas DXF formatas. DWG konvertuokite nemokamai: *ODA File Converter* arba *LibreCAD* (DWG → DXF).
 
 ---
 
-## 1 variantas: įkėlimas į Hostinger (paprasčiausia)
+## Architektūra (pilnas sprendimas)
 
-Programa yra statinė – jokio serverio programavimo nereikia.
+Vienas projektas apjungia viską:
 
-1. Šiame projekte atsidarykite aplanką **`dist/`**.
-2. Hostinger valdymo pulte atidarykite **Failų tvarkyklė** → `public_html`.
-3. Įkelkite **visą `dist/` aplanko turinį** (index.html, assets/, wasm/, favicon.svg).
-4. Atidarykite savo domeną – programa veikia.
+| Kelias | Kas | Prieiga |
+|---|---|---|
+| `/` | Titulinis puslapis (landing) | Vieša |
+| `/app` | QTO programa (IFC/PDF/DXF → kiekiai) | Vieša (veikia ir be prisijungimo, localStorage) |
+| `/login` | Prisijungimas (Kimi OAuth 2.0) | Vieša |
+| `/portal` | „Mano projektai“ – debesyje išsaugoti darbai | Reikia prisijungti |
 
-Veikia ir pakelgyje (pvz., `domenas.lt/qto/`) – keliai relatyvūs.
+- **Frontend**: React 19 + Vite + Tailwind (SPA, `dist/public`)
+- **Backend**: Hono + tRPC 11 (`api/`), JWT sesijos (httpOnly slapukas)
+- **DB**: MySQL per Drizzle ORM (`db/schema.ts`: `users`, `projects`)
+- **Diegimas**: Docker (`Dockerfile` – vienoje atspalvyje frontend + backend)
 
-## 2 variantas: GitHub + Codespaces
+## Paleidimas
 
-```bash
-git init
-git add .
-git commit -m "QTO programa"
-git remote add origin https://github.com/JUSU_VARDAS/qto.git
-git push -u origin main
-```
-
-Codespaces arba lokaliai (VS Code):
+### Kūrimo režimas
 
 ```bash
 npm install
-npm run dev      # kūrimo režimas  → http://localhost:3000
-npm run build    # sugeneruoja dist/ (ją kelkite į Hostinger)
+npm run db:push    # sukuria DB lenteles
+npm run dev        # http://localhost:3000
 ```
+
+### Produkacija (Docker)
+
+```bash
+docker build -t qto .
+docker run -p 3000:3000 qto
+```
+
+Arba be Docker: `npm run build && npm start` (reikia `.env` kintamųjų).
+
+## Paleidimo į gyvenimą kontrolinis sąrašas
+
+**Infrastruktūra**
+- [ ] Domenas + HTTPS (Let's Encrypt / Cloudflare); OAuth callback turi būti `https://DOMENAS/api/oauth/callback` – užregistruoti Kimi portale
+- [ ] `.env` – per secrets valdymą (NE į git); `APP_SECRET`, `DATABASE_URL`, `VITE_APP_ID`, `VITE_KIMI_AUTH_URL`
+- [ ] MySQL produkcijoje: `npm run db:generate` → `db:migrate` (NE `db:push` prod'e), kasdieniai backup'ai
+- [ ] Reverse proxy (nginx/Caddy) → `:3000`, gzip/brotli, statinių failų cache
+
+**Saugumas**
+- [ ] Sesijų slapukas: `Secure` + `SameSite` (prod režime automatiškai per `getSessionCookieOptions`)
+- [ ] Rate limiting `/api/*` (pvz., nginx `limit_req`) – apsauga nuo bruteforce/API švaistymo
+- [ ] Projektų dydžio limitas `projects.data` (JSON) – pvz., 5 MB, validuoti serveryje
+- [ ] RBAC patikra: `adminQuery` tik administratoriui (jau yra `api/middleware.ts`)
+
+**Teisinis (BDAR/GDPR)**
+- [ ] Privatumo politika: kokius duomenis renkate (vardas, el. paštas iš OAuth; projektų turinys), saugojimo terminai
+- [ ] Vartotojo teisė ištrinti paskyrą ir visus projektus (mygtukas portale)
+- [ ] Slapukų informacija (sesijos slapukas – būtinas, sutikimo nereikia, bet reikia paminėti)
+- [ ] Naudojimo sąlygos (atsakomybės apribojimas už kiekių tikslumą – įrankis padeda, bet sąmatininkas tikrina)
+
+**Stebėsena ir kokybė**
+- [ ] Sveikatos tikrinimas: `GET /api/trpc/ping` uptime monitoriumi (pvz., UptimeRobot)
+- [ ] Klaidų sekimas (Sentry ar pan.) frontend + backend
+- [ ] `npm run check` + E2E testai (`work/tests/`) prieš kiekvieną diegimą; rollback per versijų tvarkyklę
 
 ---
 
