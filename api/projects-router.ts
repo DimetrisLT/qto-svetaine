@@ -8,12 +8,18 @@ import {
   updateProject,
 } from "./queries/projects";
 
-const projectData = z.object({
-  version: z.literal(1),
-  savedAt: z.string(),
-  itemsBySource: z.record(z.string(), z.array(z.unknown())),
-  metas: z.record(z.string(), z.unknown()),
-});
+const MAX_PROJECT_BYTES = 5 * 1024 * 1024; // 5 MB – užtenka ~50 tūkst. pozicijų
+
+const projectData = z
+  .object({
+    version: z.literal(1),
+    savedAt: z.string(),
+    itemsBySource: z.record(z.string(), z.array(z.unknown())),
+    metas: z.record(z.string(), z.unknown()),
+  })
+  .refine((d) => JSON.stringify(d).length <= MAX_PROJECT_BYTES, {
+    message: "Projektas per didelis (>5 MB). Padalinkite jį arba eksportuokite dalį JSON.",
+  });
 
 export const projectsRouter = createRouter({
   list: authedQuery.query(({ ctx }) => findProjectsByUser(ctx.user.id)),

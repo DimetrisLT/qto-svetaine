@@ -47,3 +47,7 @@ export async function deleteProject(id: number, userId: number) {
     .delete(schema.projects)
     .where(and(eq(schema.projects.id, id), eq(schema.projects.userId, userId)));
 }
+
+export async function deleteProjectsByUser(userId: number) {
+  await getDb().delete(schema.projects).where(eq(schema.projects.userId, userId));
+}

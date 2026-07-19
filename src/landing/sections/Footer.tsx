@@ -92,6 +92,11 @@ export default function Footer() {
           <div className="font-dim flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
             {TECH.map((t) => <span key={t}>{t}</span>)}
           </div>
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <Link to="/privatumas" className="transition-colors hover:text-sky-300">Privatumo politika</Link>
+            <Link to="/salygos" className="transition-colors hover:text-sky-300">Naudojimo sąlygos</Link>
+            <Link to="/portal" className="transition-colors hover:text-sky-300">Portalas</Link>
+          </div>
         </div>
       </div>
     </footer>

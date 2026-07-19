@@ -34,3 +34,7 @@ export async function upsertUser(data: InsertUser) {
     .values(values)
     .onDuplicateKeyUpdate({ set: updateSet });
 }
+
+export async function deleteUser(userId: number) {
+  await getDb().delete(schema.users).where(eq(schema.users.id, userId));
+}

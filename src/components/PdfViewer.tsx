@@ -9,6 +9,12 @@ import { cn } from '@/lib/utils';
 import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, type ScannedRow } from '@/lib/ocr/scanSchedule';
 import ScheduleReview from '@/components/ScheduleReview';
 import { suggestForPage, paperFromPoints, unitsPerMeterFor, deviationPct, type ScaleSuggestion } from '@/lib/pdf/scaleDetect';
+import {
+  TextIndex, suggestName, extractDimensions, estimateScaleFromDimensions, checkLengthAgainstDimensions,
+  type DimensionItem, type DimensionScaleEstimate,
+} from '@/lib/pdf/textItems';
+import { extractTextItems } from '@/lib/pdf/textItems';
+import { ocrTextItems } from '@/lib/ocr/pageText';
 import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -32,6 +38,10 @@ interface PendingForm {
   perArea: string;
   perVolume: string;
   material: string;
+  /** Pavadinimas pasiūlytas automatiškai pagal artimiausią žymą */
+  nameSuggested?: boolean;
+  /** Artimiausios matmenų grandinės sutikrinimas (mm) */
+  dimCheck?: { dimMm: number; ok: boolean } | null;
 }
 
 interface Props {
@@ -73,6 +83,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const visoRef = useRef<number[] | undefined>(undefined);
   const [snapIndicator, setSnapIndicator] = useState<Pt | null>(null);
   const snapPrevRef = useRef<Pt | null>(null);
+  // Teksto elementai (žymoms ir matmenų grandinėms): teksto sluoksnis arba OCR rastrui
+  const textIndexRef = useRef<TextIndex | null>(null);
+  const dimsRef = useRef<DimensionItem[]>([]);
+  const segsDataRef = useRef<{ count: number; data: Float32Array } | null>(null);
+  const [dimScale, setDimScale] = useState<DimensionScaleEstimate | null>(null);
+  const [ocrScale, setOcrScale] = useState<ScaleSuggestion | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -159,11 +175,60 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     if (!pdf) return;
     let cancelled = false;
     snapIndexRef.current = null;
+    segsDataRef.current = null;
     pdf.getPage(pageNum).then(async (page) => {
       try {
         const segs = await extractSegments(page);
-        if (!cancelled && segs) snapIndexRef.current = new SnapIndex(segs);
+        if (!cancelled && segs) {
+          snapIndexRef.current = new SnapIndex(segs);
+          segsDataRef.current = segs;
+        }
       } catch { /* vektorių nėra (skenuotas PDF) – snapping tiesiog neveikia */ }
+    });
+    return () => { cancelled = true; };
+  }, [pdf, pageNum]);
+
+  // Teksto elementai žymoms (#5) ir matmenų grandinėms (#1):
+  // vektoriniam PDF – teksto sluoksnis; rastriniam – OCR su pozicijomis
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    textIndexRef.current = null;
+    dimsRef.current = [];
+    setDimScale(null);
+    setOcrScale(null);
+    pdf.getPage(pageNum).then(async (page) => {
+      let items = await extractTextItems(page);
+      let fromOcr = false;
+      if (!items) {
+        // Rastras: OCR (lėta, ~10–20 s) – naudinga ir mastelio žymai, ir žymų pasiūlymams
+        items = await ocrTextItems(page).catch(() => null);
+        fromOcr = true;
+      }
+      if (cancelled || !items) return;
+      textIndexRef.current = new TextIndex(items);
+      dimsRef.current = extractDimensions(items);
+
+      if (fromOcr) {
+        // Rastras: mastelio žyma („M 1:100“) iš OCR teksto
+        const text = items.map((i) => i.str).join(' ');
+        const viewport = page.getViewport({ scale: 1 });
+        const sug = suggestForPage(viewport.width, viewport.height, text);
+        if (!cancelled && sug) setOcrScale(sug);
+      } else if (dimsRef.current.length > 0) {
+        // Vektorius: mastelio įvertis iš matmenų grandinių (skaičius šalia ilgo segmento)
+        let segs = segsDataRef.current;
+        if (!segs) {
+          try {
+            segs = (await extractSegments(page)) ?? null;
+            if (segs) segsDataRef.current = segs;
+          } catch { /* ignore */ }
+        }
+        if (!cancelled && segs) {
+          const est = estimateScaleFromDimensions(dimsRef.current, segs.data, segs.count);
+          if (est && est.evidence >= 1) setDimScale(est);
+        }
+      }
     });
     return () => { cancelled = true; };
   }, [pdf, pageNum]);
@@ -192,14 +257,24 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   const openForm = (kind: PendingForm['kind'], pts: Pt[]) => {
     const defCat: ElementCategory = kind === 'length' ? 'wall' : kind === 'area' ? 'slab' : 'column';
+    // #5: pavadinimas iš artimiausios žymos (patalpa „107 …“, markė „S-12“…)
+    const suggested = suggestName(textIndexRef.current, pts);
+    // #1: ilgio sutikrinimas su artimiausia matmenų grandine (±2 %)
+    let dimCheck: { dimMm: number; ok: boolean } | null = null;
+    if (kind === 'length' && calibrated) {
+      const mm = (polylineLength(pts, false) / unitsPerMeter!) * 1000;
+      dimCheck = checkLengthAgainstDimensions(dimsRef.current, pts, mm);
+    }
     setForm({
       kind, pts,
       category: defCat,
-      name: `${CATEGORY_INFO[defCat].lt} (PDF p.${pageNum})`,
+      name: suggested ?? `${CATEGORY_INFO[defCat].lt} (PDF p.${pageNum})`,
       height: kind === 'length' ? '3' : '',
       thickness: '',
       perArea: '', perVolume: '',
       material: '',
+      nameSuggested: suggested !== null,
+      dimCheck,
     });
     setCurrent([]);
   };
@@ -503,6 +578,25 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             <span className="text-emerald-800/70 dark:text-emerald-300/70">arba sukalibruokite ranka („Mastelis“ + du žinomi taškai)</span>
           </div>
         )}
+        {!calibrated && !scaleSuggestion && (dimScale || ocrScale) && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
+            {ocrScale ? (
+              <span>🔍 Iš skenuoto lapo nuskaityta: mastelis <b>1:{ocrScale.scale}</b> ({ocrScale.paperName}, OCR).</span>
+            ) : dimScale && (
+              <span>
+                📏 Mastelis pagal matmenų grandines: <b>~1:{Math.round((72 / 25.4 * 1000) / dimScale.unitsPerMeter)}</b>
+                {' '}({dimScale.evidence} grand., pvz., {dimScale.sample}).
+              </span>
+            )}
+            <button
+              onClick={() => { onCalibrate(ocrScale ? ocrScale.unitsPerMeter : dimScale!.unitsPerMeter); setCalibDeviation(null); }}
+              className="rounded-md bg-sky-600 px-2.5 py-1 font-semibold text-white hover:bg-sky-700"
+            >
+              Taikyti šį mastelį
+            </button>
+            <span className="text-sky-800/70 dark:text-sky-300/70">patikrinkite su vienu žinomu atstumu</span>
+          </div>
+        )}
         {!calibrated && !scaleSuggestion && (
           <div className="mb-2 space-y-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
             <p>⚠️ Mastelis nesukalibruotas: pasirinkite „Mastelis“, spustelėkite du žinomus taškus (pvz., ašių sankirtas) ir įveskite realų atstumą metrais.</p>
@@ -694,9 +788,24 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             </label>
             <label className="block text-xs">
               Pavadinimas
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, nameSuggested: false })}
                 className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
+              {form.nameSuggested && (
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">✨ pasiūlyta pagal artimiausią žymą brėžinyje – galite redaguoti</span>
+              )}
             </label>
+            {form.dimCheck && (
+              <p className={cn(
+                'rounded-md px-2 py-1.5 text-[11px]',
+                form.dimCheck.ok
+                  ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                  : 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+              )}>
+                {form.dimCheck.ok
+                  ? `✓ Sutampa su matmenų grandine: ${form.dimCheck.dimMm} mm`
+                  : `⚠ Artimiausia grandinė: ${form.dimCheck.dimMm} mm – išmatuota kitaip, patikrinkite mastelį arba taškus`}
+              </p>
+            )}
             {form.kind === 'length' && (
               <label className="block text-xs">
                 Aukštis (m) – sienoms

@@ -14,7 +14,14 @@ export default function Portal() {
   const remove = trpc.projects.remove.useMutation({
     onSuccess: () => utils.projects.list.invalidate(),
   });
+  const deleteMe = trpc.auth.deleteMe.useMutation({
+    onSuccess: () => {
+      // Kietas peradresavimas – išvalo visą auth būseną nepriklausomai nuo refetch lenktynių
+      window.location.href = '/';
+    },
+  });
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (isLoading || !user) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Kraunama…</div>;
@@ -110,6 +117,33 @@ export default function Portal() {
           ))}
         </div>
       </main>
+
+      <footer className="mx-auto mt-10 max-w-5xl border-t px-4 pt-4 pb-8">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <Link to="/privatumas" className="hover:text-primary">Privatumo politika</Link>
+          <Link to="/salygos" className="hover:text-primary">Naudojimo sąlygos</Link>
+          {confirmDelete ? (
+            <span className="ml-auto flex items-center gap-2">
+              <span className="text-destructive">Ištrinti paskyrą ir visus projektus negrįžtamai?</span>
+              <button
+                onClick={() => deleteMe.mutate()}
+                disabled={deleteMe.isPending}
+                className="rounded-lg bg-destructive px-3 py-1.5 font-semibold text-destructive-foreground disabled:opacity-50"
+              >
+                Taip, ištrinti viską
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="rounded-lg border px-3 py-1.5">Atšaukti</button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="ml-auto text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
+            >
+              Ištrinti paskyrą
+            </button>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }

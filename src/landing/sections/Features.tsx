@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Boxes, FileStack, ScanText, Ruler, Magnet, ShieldCheck, Layers, FileSpreadsheet,
+  Blocks, Gauge, Cloud, Tags, ScanLine, Scale,
 } from 'lucide-react';
 
 const FEATURES = [
@@ -52,6 +53,42 @@ const FEATURES = [
     title: 'Excel eksportas',
     text: 'Žiniaraštis, santrauka, detaliai su „Kilmė“ stulpeliu, savikontrolė — 4 lapai XLSX.',
     badge: 'sąmatai paruošta',
+  },
+  {
+    icon: Blocks, span: 'md:col-span-2',
+    title: 'Kompozitiniai darbai: 1 matavimas → 4 eilutės',
+    text: 'Išmatavote sieną — gaunate betoną (m³), kofaną (m², kontaktinio paviršiaus taisyklės), armatūrą (kg/m³ įvertis) ir tinką automatiškai. Kiekviena eilutė rodo formulę — skaičiavimas visada permatomas.',
+    badge: 'šablonai',
+  },
+  {
+    icon: Gauge, span: '',
+    title: 'Rodiklių patikra',
+    text: 'Betonas m³/m², armatūra kg/m³, kofanas m²/m³ lyginami su tipiniais diapazonais — 10× mastelio klaida nepasislėps.',
+    badge: 'sveikas protas',
+  },
+  {
+    icon: Scale, span: '',
+    title: 'Trianguliacija',
+    text: 'OCR sumos ↔ „VISO“ eilutė, projektas ↔ AI planas, IFC ↔ PDF — nepriklausomi šaltiniai kryžminami automatiškai.',
+    badge: '±2–10 %',
+  },
+  {
+    icon: Tags, span: '',
+    title: 'Auto-įvardijimas',
+    text: 'Pavadinimas pasiūlomas iš artimiausios žymos brėžinyje: „107 Kabinetas“, „S-12“, „PJ-3“ — žiniaraštis skaitomas iškart.',
+    badge: '✨ iš žymų',
+  },
+  {
+    icon: ScanLine, span: '',
+    title: 'Matmenų grandinės',
+    text: 'Mastelis įvertinamas iš grandinių („6000“…), rastrui — OCR; ilgiai sutikrinami su šalia esančiomis grandinėmis (±2 %).',
+    badge: 'ir rastrui',
+  },
+  {
+    icon: Cloud, span: 'md:col-span-2',
+    title: 'Portalas: projektai debesyje',
+    text: 'Prisijungimas, „Įrašyti į paskyrą“, darbo tęsimas iš bet kurio įrenginio. Be prisijungimo — darbas automatiškai išsaugomas naršyklėje, o kalibracijos atsistato įkėlus tuos pačius failus.',
+    badge: '/portal',
   },
 ];
 

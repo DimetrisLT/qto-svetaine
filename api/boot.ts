@@ -7,10 +7,14 @@ import { createContext } from "./context";
 import { env } from "./lib/env";
 import { createOAuthCallbackHandler } from "./kimi/auth";
 import { Paths } from "@contracts/constants";
+import { rateLimit, securityHeaders } from "./rateLimit";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
+app.use(securityHeaders);
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
+// API apsauga nuo švaistymo: 300 užklausų / min. vienam IP
+app.use("/api/*", rateLimit({ windowMs: 60_000, max: 300, keyPrefix: "api" }));
 app.get(Paths.oauthCallback, createOAuthCallbackHandler());
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({

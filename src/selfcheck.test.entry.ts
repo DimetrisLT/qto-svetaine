@@ -233,5 +233,32 @@ t('savikontrolėje rodomi rodikliai', checks.some((c) => c.label.startsWith('Rod
 checks = runSelfChecks(badSet, pdfMeta);
 t('savikontrolė įspėja dėl rodiklio', checks.some((c) => c.label === 'Rodiklis: Betonas / grindų plotas' && c.status === 'warn'));
 
+// --- textItems: auto-įvardijimas (#5) ir matmenų grandinės (#1) ---
+console.log('textItems:');
+import { TextIndex, suggestName, extractDimensions, estimateScaleFromDimensions, checkLengthAgainstDimensions } from '@/lib/pdf/textItems';
+const ti = new TextIndex([
+  { str: '107 Kabinetas', x: 100, y: 100 },
+  { str: 'S-12', x: 240, y: 380 },
+  { str: '10000', x: 232, y: 392 },
+  { str: 'M1:100', x: 60, y: 780 },
+  { str: '2026-07-19', x: 300, y: 100 },
+]);
+t('žymos pasiūlymas: markė S-12', suggestName(ti, [{ x: 241, y: 400 }]) === 'S-12');
+t('žymos pasiūlymas: patalpa', suggestName(ti, [{ x: 105, y: 105 }]) === '107 Kabinetas');
+t('matmuo/datanepasiūloma', suggestName(ti, [{ x: 232, y: 393 }]) !== '10000');
+t('nieko šalia → null', suggestName(ti, [{ x: 900, y: 800 }]) === null);
+const dims = extractDimensions([{ str: '10000', x: 1, y: 1 }, { str: '6000', x: 2, y: 2 }, { str: 'S-12', x: 3, y: 3 }, { str: '99', x: 4, y: 4 }, { str: '3,5', x: 5, y: 5 }]);
+t('matmenų išskyrimas (tik sveiki 100–99999)', dims.length === 2 && dims[0].mm === 10000);
+const seg = new Float32Array([100, 500, 383.46, 500, 100, 650, 270.08, 650]);
+const est = estimateScaleFromDimensions(
+  [{ mm: 10000, x: 240, y: 487 }, { mm: 6000, x: 185, y: 637 }], seg, 2,
+);
+t('mastelis iš grandinių ≈ 28,35 pt/m', est !== null && Math.abs(est.unitsPerMeter - 28.346) < 0.05 && est.evidence === 2);
+t('be grandinių → null', estimateScaleFromDimensions([], seg, 2) === null);
+const chk = checkLengthAgainstDimensions([{ mm: 10000, x: 240, y: 390 }], [{ x: 100, y: 400 }, { x: 383.46, y: 400 }], 10000);
+t('ilgis sutampa su grandine (±2 %)', chk !== null && chk.ok);
+const chkBad = checkLengthAgainstDimensions([{ mm: 10000, x: 240, y: 390 }], [{ x: 100, y: 400 }, { x: 383.46, y: 400 }], 8500);
+t('ilgis nesutampa → ok=false', chkBad !== null && !chkBad.ok);
+
 console.log(`\nREZULTATAS: ${pass} ✓ / ${fail} ✗`);
 if (fail > 0) throw new Error(`${fail} testų nepavyko`);
