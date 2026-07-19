@@ -1,0 +1,11 @@
+# Caddy – paprasčiausias būdas HTTPS (automatinis Let's Encrypt sertifikatas)
+# 1. Pakeiskite qto.domenas.lt savo domenu
+# 2. DNS: A įrašas „qto“ (arba „@“) → jūsų VPS IP
+# 3. Įdiekite: apt install caddy  (arba https://caddyserver.com/docs/install)
+# 4. Nukopijuokite: cp deploy/Caddyfile /etc/caddy/Caddyfile
+# 5. systemctl reload caddy
+
+qto.domenas.lt {
+	reverse_proxy 127.0.0.1:3000
+	encode gzip
+}

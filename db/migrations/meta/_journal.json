@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1784473229133,
+      "tag": "0000_salty_jack_flag",
+      "breakpoints": true
+    }
+  ]
+}

@@ -10,8 +10,10 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm install --no-save drizzle-kit
 COPY --from=build /app/dist ./dist
-COPY .env ./
+COPY db ./db
+COPY drizzle.config.ts ./
 EXPOSE 3000
-CMD ["node", "dist/boot.js"]
+# Pirmiausia DB migracijos, tada serveris
+CMD ["sh", "-c", "npx drizzle-kit migrate && node dist/boot.js"]
