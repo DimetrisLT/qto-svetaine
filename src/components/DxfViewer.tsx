@@ -129,6 +129,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
       volume_m3,
       count,
       unit,
+      origin: 'ai',
       note: notes.length ? notes.join('; ') : undefined,
     };
     emit([...items, item]);

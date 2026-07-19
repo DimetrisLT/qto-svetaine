@@ -327,6 +327,7 @@ export async function parseIfcFile(
         volume_m3: volume_m3 ?? (unit === 'm³' ? geoVol : undefined),
         count: 1,
         unit,
+        origin: hasQ ? 'project' : 'ai',
         declaredVolume_m3: volume_m3,
         meshVolume_m3: geoVol,
         note: notes.length ? notes.join('; ') : undefined,

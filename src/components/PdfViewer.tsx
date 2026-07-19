@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, round } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ocrCanvas, parseScheduleText, rowsToItems, type ScannedRow } from '@/lib/ocr/scanSchedule';
+import ScheduleReview from '@/components/ScheduleReview';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
 
-type Tool = 'none' | 'calib' | 'length' | 'area' | 'count';
+type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan';
+
+interface ScanRect {
+  x0: number; y0: number; x1: number; y1: number;
+}
 
 interface PendingForm {
   kind: 'length' | 'area' | 'count';
@@ -48,6 +54,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [form, setForm] = useState<PendingForm | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
+  const [scanRect, setScanRect] = useState<ScanRect | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanPreview, setScanPreview] = useState<string | null>(null);
+  const [reviewRows, setReviewRows] = useState<ScannedRow[] | null>(null);
+  const [reviewTitle, setReviewTitle] = useState('');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -185,6 +197,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       pdfPage: pageNum,
       pdfFile: fileId,
       discipline,
+      origin: 'ai',
       note: !calibrated ? 'Mastelis nekalibruotas – reikšmės sąlyginės' : undefined,
     };
     onItemsChange([...items, item]);
@@ -207,6 +220,78 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     onCalibrate(null);
     setCalibPts([]);
     setCalibInput('');
+  };
+
+  // --- Žiniaraščio skaitymas (OCR) ---
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (tool !== 'scan' || reviewRows || scanning) return;
+    const p = toPdfPt(e);
+    setScanRect({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (tool !== 'scan' || !scanRect) return;
+    // Vilkti pradėta tik nuspaudus – tikriname peles mygtuką
+    if (e.buttons !== 1) return;
+    const p = toPdfPt(e);
+    setScanRect({ ...scanRect, x1: p.x, y1: p.y });
+  };
+
+  const handleMouseUp = () => {
+    if (tool !== 'scan' || !scanRect) return;
+    const r = scanRect;
+    setScanRect(null);
+    void runScan(r);
+  };
+
+  const runScan = async (r: ScanRect) => {
+    if (!pdf) return;
+    const w = Math.abs(r.x1 - r.x0);
+    const h = Math.abs(r.y1 - r.y0);
+    if (w < 20 || h < 10) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const page = await pdf.getPage(pageNum);
+      const scale = 3; // ~216 dpi – pakanka OCR
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(w * scale);
+      c.height = Math.ceil(h * scale);
+      const cctx = c.getContext('2d')!;
+      const viewport = page.getViewport({ scale });
+      await page.render({
+        canvas: c,
+        canvasContext: cctx,
+        viewport,
+        transform: [1, 0, 0, 1, -Math.min(r.x0, r.x1) * scale, -Math.min(r.y0, r.y1) * scale],
+      }).promise;
+      const text = await ocrCanvas(c);
+      setScanPreview(c.toDataURL('image/png'));
+      const rows = parseScheduleText(text);
+      if (rows.length === 0) {
+        setScanError('Pažymėtoje srityje kiekių pozicijų neaptikta. Pabandykite pažymėti tikslesnę lentelės sritį arba įveskite poziciją ranka.');
+      } else {
+        setReviewRows(rows);
+        setReviewTitle(`Nuskaityta iš p.${pageNum} – aptikta ${rows.length} poz.`);
+      }
+    } catch (err) {
+      console.error(err);
+      setScanError('OCR nepavyko (reikalingas interneto ryšys pirmam OCR variklio užkėlimui). Bandykite dar kartą.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const openManualEntry = () => {
+    setScanError(null);
+    setReviewRows([]);
+    setReviewTitle('Projekto pozicijos įvedimas ranka');
+  };
+
+  const saveReview = (rows: ScannedRow[]) => {
+    const newItems = rowsToItems(rows, { fileId, fileName: file.name, discipline, page: pageNum });
+    if (newItems.length) onItemsChange([...items, ...newItems]);
+    setReviewRows(null);
   };
 
   const liveLength = current.length >= 2 ? toMeters(polylineLength(current, false)) : undefined;
@@ -282,6 +367,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('length', <Spline className="h-3.5 w-3.5" />, 'Ilgis (sienos)')}
           {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, 'Plotas')}
           {toolBtn('count', <Hash className="h-3.5 w-3.5" />, 'Skaičiuoti')}
+          {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, 'Žiniaraštis (OCR)')}
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="rounded-lg border p-1.5 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
@@ -328,7 +414,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
         {/* Brėžinys + perdanga */}
         <div className="max-h-[640px] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900">
-          <div ref={wrapRef} className="relative inline-block cursor-crosshair" onClick={handleClick}>
+          <div
+            ref={wrapRef}
+            className="relative inline-block cursor-crosshair"
+            onClick={handleClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          >
             <canvas ref={canvasRef} className="block" />
             <svg width={viewSize.w} height={viewSize.h} className="absolute left-0 top-0">
               {/* Kalibravimo atkarpa */}
@@ -349,6 +442,20 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 tool === 'length' && liveLength !== undefined ? `${fmt(liveLength)} m`
                   : tool === 'area' && liveArea !== undefined ? `${fmt(liveArea)} m²`
                   : tool === 'count' ? `${current.length} vnt.` : undefined)}
+              {/* OCR srities rėmelis */}
+              {scanRect && (
+                <rect
+                  x={Math.min(scanRect.x0, scanRect.x1) * zoom}
+                  y={Math.min(scanRect.y0, scanRect.y1) * zoom}
+                  width={Math.abs(scanRect.x1 - scanRect.x0) * zoom}
+                  height={Math.abs(scanRect.y1 - scanRect.y0) * zoom}
+                  fill="#8b5cf6"
+                  fillOpacity={0.12}
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                />
+              )}
             </svg>
           </div>
         </div>
@@ -356,6 +463,47 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
       {/* Šoninis stulpelis */}
       <div className="space-y-3">
+        {/* OCR būsena ir žiniaraščio peržiūra */}
+        {tool === 'scan' && !scanning && !reviewRows && (
+          <div className="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs text-violet-900 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200">
+            Nuspauskite ir užtempkite rėmelį ant <b>žiniaraščio / eksplikacijos lentelės</b> brėžinyje – programa nuskaitys pozicijas (pavadinimas, vnt., kiekis) ir leis patikrinti prieš įtraukiant.
+          </div>
+        )}
+        {scanning && (
+          <div className="rounded-xl border p-3 text-sm">
+            <p className="font-medium">Skaitoma (OCR)…</p>
+            <p className="text-xs text-muted-foreground">Pirmasis kartas gali užtrukti ~10–20 s (kraunamas OCR variklis).</p>
+          </div>
+        )}
+        {scanError && (
+          <div className="space-y-2">
+            <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              ⚠️ {scanError}
+            </p>
+            {scanPreview && (
+              <div className="rounded-lg border p-1.5">
+                <p className="mb-1 text-[10px] text-muted-foreground">Nuskaityta sritis:</p>
+                <img src={scanPreview} alt="OCR sritis" className="w-full rounded" />
+              </div>
+            )}
+          </div>
+        )}
+        {reviewRows !== null && (
+          <ScheduleReview
+            rows={reviewRows}
+            title={reviewTitle}
+            onSave={saveReview}
+            onCancel={() => setReviewRows(null)}
+          />
+        )}
+        {!reviewRows && !scanning && (
+          <button
+            onClick={openManualEntry}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            <ClipboardPlus className="h-3.5 w-3.5" /> Įvesti projekto poziciją ranka
+          </button>
+        )}
         {/* Kalibravimo forma */}
         {tool === 'calib' && (
           <div className="rounded-xl border p-3 space-y-2">

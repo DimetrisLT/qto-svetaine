@@ -18,7 +18,15 @@ export type ElementCategory =
   | 'fin_ceiling'
   | 'other';
 
-export type MeasureUnit = 'vnt.' | 'm' | 'm²' | 'm³';
+export type MeasureUnit = 'vnt.' | 'm' | 'm²' | 'm³' | 'kg';
+
+/** Kiekio kilmė: 'project' – projekto duomenys (iš brėžinių lentelių / IFC Qto), 'ai' – skaičiuota AI */
+export type QuantityOrigin = 'ai' | 'project';
+
+export const ORIGIN_INFO: Record<QuantityOrigin, { lt: string; short: string }> = {
+  project: { lt: 'Projekto duomenys', short: 'proj.' },
+  ai: { lt: 'Skaičiuota AI', short: 'AI' },
+};
 
 export interface QtoItem {
   id: string;
@@ -35,6 +43,10 @@ export interface QtoItem {
   volume_m3?: number;
   count: number;
   unit: MeasureUnit;
+  /** Masa kg (armatūrai, metalui) */
+  mass_kg?: number;
+  /** Kiekio kilmė: projekto duomenys arba AI skaičiavimas */
+  origin: QuantityOrigin;
   /** IFC deklaruotas tūris iš Qto rinkinių (savikontrolei) */
   declaredVolume_m3?: number;
   /** Tūris, apskaičiuotas iš geometrinio modelio (savikontrolei) */

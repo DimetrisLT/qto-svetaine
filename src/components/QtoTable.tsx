@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { CATEGORY_INFO, CATEGORY_ORDER, type QtoItem, type SourceType } from '@/types/qto';
+import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, type QtoItem, type SourceType } from '@/types/qto';
 import { fmt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -69,6 +69,7 @@ export default function QtoTable({ items, onDelete, showSource = true, compact =
             <tr className="text-left">
               {showSource && <th className="px-3 py-2 font-medium">Šaltinis</th>}
               {showSource && <th className="px-3 py-2 font-medium">Dalis</th>}
+              {showSource && <th className="px-3 py-2 font-medium">Kilmė</th>}
               <th className="px-3 py-2 font-medium">Kategorija</th>
               <th className="px-3 py-2 font-medium">Pavadinimas</th>
               <th className="px-3 py-2 font-medium">Medžiaga</th>
@@ -91,6 +92,24 @@ export default function QtoTable({ items, onDelete, showSource = true, compact =
                       i.source === 'PDF' && 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
                       i.source === 'DXF' && 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
                     )}>{i.source}</span>
+                  </td>
+                )}
+                {showSource && (
+                  <td className="px-3 py-1.5 text-xs text-muted-foreground">{i.discipline ?? '—'}</td>
+                )}
+                {showSource && (
+                  <td className="px-3 py-1.5">
+                    <span
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                        i.origin === 'project'
+                          ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                      )}
+                      title={ORIGIN_INFO[i.origin].lt}
+                    >
+                      {ORIGIN_INFO[i.origin].short}
+                    </span>
                   </td>
                 )}
                 <td className="px-3 py-1.5 whitespace-nowrap">

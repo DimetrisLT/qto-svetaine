@@ -42,6 +42,7 @@ export interface ZiniarastisRow {
   name: string;
   unit: QtoItem['unit'];
   qty: number;
+  origin: QtoItem['origin'];
   sources: string[];
   detailCount: number;
 }
@@ -56,6 +57,7 @@ function primaryQty(item: QtoItem): number {
     case 'm³': return item.volume_m3 ?? 0;
     case 'm²': return item.area_m2 ?? 0;
     case 'm': return item.length_m ?? 0;
+    case 'kg': return item.mass_kg ?? 0;
     default: return item.count;
   }
 }
@@ -65,7 +67,8 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
   const acc = new Map<string, ZiniarastisRow>();
   for (const item of items) {
     const groupCode = GROUP_BY_CATEGORY[item.category] ?? '09';
-    const key = `${groupCode}|${item.category}|${item.material ?? ''}|${item.unit}`;
+    // Projekto duomenys ir AI skaičiavimai – atskiros pozicijos
+    const key = `${groupCode}|${item.category}|${item.material ?? ''}|${item.unit}|${item.origin}`;
     let row = acc.get(key);
     if (!row) {
       const mat = item.material ? `, ${item.material}` : '';
@@ -75,6 +78,7 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
         name: `${CATEGORY_INFO[item.category].lt}${mat}`,
         unit: item.unit,
         qty: 0,
+        origin: item.origin,
         sources: [],
         detailCount: 0,
       };

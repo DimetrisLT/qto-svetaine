@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { CATEGORY_INFO, type QtoItem } from '@/types/qto';
+import { CATEGORY_INFO, ORIGIN_INFO, type QtoItem } from '@/types/qto';
 import { buildZiniarastis } from '@/lib/works';
 import { fmt } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 /** Darbų kiekių žiniaraštis – sugrupuota sąmatinė forma */
 export default function ZiniarastisTable({ items }: { items: QtoItem[] }) {
@@ -44,7 +45,18 @@ export default function ZiniarastisTable({ items }: { items: QtoItem[] }) {
                       style={{ backgroundColor: CATEGORY_INFO[r.category].color }}
                     />
                     {r.name}
-                    <span className="ml-1.5 text-xs text-muted-foreground">({r.detailCount} eil.)</span>
+                    <span
+                      className={cn(
+                        'ml-1.5 rounded px-1 py-0.5 text-[10px] font-semibold',
+                        r.origin === 'project'
+                          ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                      )}
+                      title={ORIGIN_INFO[r.origin].lt}
+                    >
+                      {ORIGIN_INFO[r.origin].short}
+                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">({r.detailCount} eil.)</span>
                   </td>
                   <td className="px-3 py-1.5">{r.unit}</td>
                   <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{fmt(r.qty)}</td>

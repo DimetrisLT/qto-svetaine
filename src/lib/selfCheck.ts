@@ -111,10 +111,15 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
     }
   }
 
-  // 3) Suvestinė pagal kategorijas
+  // 3) Suvestinė pagal kategorijas ir kilmę
   const cats = new Set(items.map((i) => i.category));
   add('geometry', 'Kiekių suvestinė', 'ok',
     `Iš viso eilučių: ${items.length}. Kategorijos: ${[...cats].map((c) => CATEGORY_INFO[c].lt).join(', ')}.`);
+
+  const proj = items.filter((i) => i.origin === 'project').length;
+  const ai = items.length - proj;
+  add('completeness', 'Kiekių kilmė', 'ok',
+    `Projekto duomenys: ${proj} poz.; skaičiuota AI: ${ai} poz. Žiniaraštyje jos pažymėtos atskirai.`);
 
   return checks;
 }

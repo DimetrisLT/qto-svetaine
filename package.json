@@ -57,6 +57,7 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
+    "tesseract.js": "^7.0.0",
     "three": "^0.185.1",
     "vaul": "^1.1.2",
     "web-ifc": "^0.0.77",

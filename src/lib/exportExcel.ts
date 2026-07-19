@@ -1,6 +1,6 @@
 // Excel (XLSX) eksportas ir CSV kopijavimas
 import * as XLSX from 'xlsx';
-import { CATEGORY_INFO, CATEGORY_ORDER, type CheckResult, type QtoItem } from '@/types/qto';
+import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, type CheckResult, type QtoItem } from '@/types/qto';
 import { buildZiniarastis } from '@/lib/works';
 import { round } from '@/lib/format';
 
@@ -37,15 +37,15 @@ function summaryRows(items: QtoItem[]) {
 
 function detailRows(items: QtoItem[]) {
   const rows: Array<Array<string | number>> = [[
-    'Šaltinis', 'Dalis', 'Kategorija', 'Pavadinimas', 'Medžiaga',
+    'Šaltinis', 'Dalis', 'Kilmė', 'Kategorija', 'Pavadinimas', 'Medžiaga',
     'Ilgis (m)', 'Plotis/storis (m)', 'Aukštis (m)',
-    'Plotas (m²)', 'Tūris (m³)', 'Kiekis (vnt.)', 'Mato vnt.', 'Pastaba',
+    'Plotas (m²)', 'Tūris (m³)', 'Kiekis (vnt.)', 'Masa (kg)', 'Mato vnt.', 'Pastaba',
   ]];
   for (const i of items) {
     rows.push([
-      i.source, i.discipline ?? '', CATEGORY_INFO[i.category].lt, i.name, i.material ?? '',
+      i.source, i.discipline ?? '', ORIGIN_INFO[i.origin].lt, CATEGORY_INFO[i.category].lt, i.name, i.material ?? '',
       i.length_m ?? '', i.width_m ?? i.thickness_m ?? '', i.height_m ?? '',
-      i.area_m2 ?? '', i.volume_m3 ?? '', i.count, i.unit, i.note ?? '',
+      i.area_m2 ?? '', i.volume_m3 ?? '', i.count, i.mass_kg ?? '', i.unit, i.note ?? '',
     ]);
   }
   return rows;
@@ -54,12 +54,12 @@ function detailRows(items: QtoItem[]) {
 function ziniarastisRows(items: QtoItem[]) {
   const groups = buildZiniarastis(items);
   const rows: Array<Array<string | number>> = [[
-    'Eil. nr.', 'Darbo pobūdis / pozicija', 'Mato vnt.', 'Kiekis', 'Šaltiniai',
+    'Eil. nr.', 'Darbo pobūdis / pozicija', 'Mato vnt.', 'Kiekis', 'Kilmė', 'Šaltiniai',
   ]];
   for (const { group, rows: grows } of groups) {
-    rows.push([group.code, group.title.toUpperCase(), '', '', '']);
+    rows.push([group.code, group.title.toUpperCase(), '', '', '', '']);
     grows.forEach((r, i) => {
-      rows.push([`${group.code}.${i + 1}`, r.name, r.unit, round(r.qty, 2), r.sources.join(', ')]);
+      rows.push([`${group.code}.${i + 1}`, r.name, r.unit, round(r.qty, 2), ORIGIN_INFO[r.origin].lt, r.sources.join(', ')]);
     });
   }
   return rows;
@@ -85,7 +85,7 @@ export function exportToExcel(items: QtoItem[], checks: CheckResult[], fileBase 
   s1['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, s1, 'Santrauka');
   const s2 = XLSX.utils.aoa_to_sheet(detailRows(items));
-  s2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 16 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 40 }];
+  s2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 17 }, { wch: 16 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 }, { wch: 40 }];
   XLSX.utils.book_append_sheet(wb, s2, 'Detaliai');
   const s3 = XLSX.utils.aoa_to_sheet(checkRows(checks));
   s3['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 10 }, { wch: 80 }];
