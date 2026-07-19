@@ -6,7 +6,7 @@ import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem 
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, round } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { ocrCanvas, parseScheduleText, rowsToItems, type ScannedRow } from '@/lib/ocr/scanSchedule';
+import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, type ScannedRow } from '@/lib/ocr/scanSchedule';
 import ScheduleReview from '@/components/ScheduleReview';
 import { suggestForPage, paperFromPoints, unitsPerMeterFor, deviationPct, type ScaleSuggestion } from '@/lib/pdf/scaleDetect';
 import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
@@ -70,6 +70,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const detectReportedRef = useRef(false);
   const snapIndexRef = useRef<SnapIndex | null>(null);
   const snapRef = useRef<Pt | null>(null);
+  const visoRef = useRef<number[] | undefined>(undefined);
   const [snapIndicator, setSnapIndicator] = useState<Pt | null>(null);
   const snapPrevRef = useRef<Pt | null>(null);
 
@@ -349,6 +350,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       if (rows.length === 0) {
         setScanError('Pažymėtoje srityje kiekių pozicijų neaptikta. Pabandykite pažymėti tikslesnę lentelės sritį arba įveskite poziciją ranka.');
       } else {
+        visoRef.current = extractVisoTotals(text);
         setReviewRows(rows);
         setReviewTitle(`Nuskaityta iš p.${pageNum} – aptikta ${rows.length} poz.`);
       }
@@ -367,8 +369,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const saveReview = (rows: ScannedRow[]) => {
-    const newItems = rowsToItems(rows, { fileId, fileName: file.name, discipline, page: pageNum });
+    const newItems = rowsToItems(rows, { fileId, fileName: file.name, discipline, page: pageNum }, visoRef.current);
     if (newItems.length) onItemsChange([...items, ...newItems]);
+    visoRef.current = undefined;
     setReviewRows(null);
   };
 

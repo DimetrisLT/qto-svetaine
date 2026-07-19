@@ -187,9 +187,25 @@ export function parseScheduleText(text: string): ScannedRow[] {
 }
 
 /** Konvertuoja patvirtintas eilutes į QTO elementus (projekto duomenys) */
+/** Iš OCR teksto ištraukia „VISO“ eilučių sumas (trianguliacijai su pozicijų suma) */
+export function extractVisoTotals(text: string): number[] {
+  const totals: number[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim().toUpperCase();
+    if (!line.startsWith('VISO')) continue;
+    const nums = [...line.matchAll(/(\d+[.,]\d+|\d+)/g)]
+      .map((m) => parseFloat(m[1].replace(',', '.')))
+      .filter((n) => n > 0.001);
+    totals.push(...nums);
+  }
+  // Unikalios reikšmės
+  return [...new Set(totals.map((n) => Math.round(n * 1000) / 1000))];
+}
+
 export function rowsToItems(
   rows: ScannedRow[],
   ctx: { fileId: string; fileName: string; discipline: string; page: number },
+  visoCandidates?: number[],
 ): QtoItem[] {
   return rows.filter((r) => r.include).map((r) => ({
     id: uid(),
@@ -208,5 +224,6 @@ export function rowsToItems(
     discipline: ctx.discipline,
     pdfPage: ctx.page,
     note: `Projekto duomenys: „${ctx.fileName}“, p.${ctx.page}`,
+    visoCandidates: visoCandidates && visoCandidates.length > 0 ? visoCandidates : undefined,
   }));
 }

@@ -60,6 +60,8 @@ export interface QtoItem {
   /** Projekto dalis (A, SK, VK, E, Š, V, T, Kita) */
   discipline?: string;
   note?: string;
+  /** OCR žiniaraščio „VISO“ eilutės kandidatinės sumos (trianguliacijai) */
+  visoCandidates?: number[];
 }
 
 /** Projekto dalys (disciplines) */

@@ -202,5 +202,103 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
       `Vnt. kiekiai sutampa su projekto žiniaraščiu: ${countMatches.join('; ')}.`);
   }
 
+  // --- ŠALTINIŲ TRIANGULIACIJA ---
+  // 7) OCR žiniaraščio aritmetika: pozicijų suma vs „VISO“ eilutė
+  const visoGroups = new Map<string, QtoItem[]>();
+  for (const i of items) {
+    if (!i.visoCandidates || i.visoCandidates.length === 0) continue;
+    const key = `${i.pdfFile}|${i.pdfPage}`;
+    const arr = visoGroups.get(key) ?? [];
+    arr.push(i);
+    visoGroups.set(key, arr);
+  }
+  for (const [key, gitems] of visoGroups) {
+    const candidates = gitems[0].visoCandidates!;
+    const sumVol = gitems.reduce((s, i) => s + (i.volume_m3 ?? 0), 0);
+    const sumMass = gitems.reduce((s, i) => s + (i.mass_kg ?? 0), 0);
+    const sumCount = gitems.reduce((s, i) => s + (i.unit === 'vnt.' ? i.count : 0), 0);
+    const sums: Array<{ label: string; value: number }> = [];
+    if (sumVol > 0) sums.push({ label: `${fmt(sumVol, 2)} m³`, value: sumVol });
+    if (sumMass > 0) sums.push({ label: `${fmt(sumMass, 1)} kg`, value: sumMass });
+    if (sumCount > 0 && sumVol === 0 && sumMass === 0) sums.push({ label: `${fmt(sumCount, 0)} vnt.`, value: sumCount });
+    const hit = candidates.find((c) => sums.some((s) => s.value > 0 && Math.abs(s.value - c) / c <= 0.02));
+    const page = key.split('|')[1];
+    if (hit !== undefined) {
+      const matchSum = sums.find((s) => Math.abs(s.value - hit) / hit <= 0.02)!;
+      add('geometry', 'OCR žiniaraščio aritmetika', 'ok',
+        `p.${page}: pozicijų suma ${matchSum.label} sutampa su žiniaraščio „VISO“ eilute (±2 %).`);
+    } else if (sums.length > 0) {
+      add('geometry', 'OCR žiniaraščio aritmetika', 'warn',
+        `p.${page}: pozicijų suma ${sums.map((s) => s.label).join(' + ')} NESUTAMPA su „VISO“ eilute (${candidates.map((c) => fmt(c, 2)).join(' / ')}). Galimai ne visos eilutės įtrauktos arba OCR suklaidino skaičių – patikrinkite.`);
+    }
+  }
+
+  // 8) Projekto duomenys ↔ AI matavimai toje pačioje kategorijoje (plotai, tūriai, ilgiai)
+  type Kind = { get: (i: QtoItem) => number | undefined; unit: string; lt: string };
+  const KINDS: Kind[] = [
+    { get: (i) => i.area_m2, unit: 'm²', lt: 'plotas' },
+    { get: (i) => i.volume_m3, unit: 'm³', lt: 'tūris' },
+    { get: (i) => i.length_m, unit: 'm', lt: 'ilgis' },
+  ];
+  const triOk: string[] = [];
+  const triWarn: string[] = [];
+  for (const cat of new Set(items.map((i) => i.category))) {
+    const catItems = items.filter((i) => i.category === cat);
+    for (const k of KINDS) {
+      const projSum = catItems.filter((i) => i.origin === 'project').reduce((s, i) => s + (k.get(i) ?? 0), 0);
+      const aiSum = catItems.filter((i) => i.origin === 'ai').reduce((s, i) => s + (k.get(i) ?? 0), 0);
+      if (projSum <= 0 || aiSum <= 0) continue;
+      const label = `${CATEGORY_INFO[cat].lt} (${k.lt}): proj. ${fmt(projSum)} ${k.unit} vs AI ${fmt(aiSum)} ${k.unit}`;
+      if (Math.abs(projSum - aiSum) / Math.max(projSum, aiSum) <= 0.1) triOk.push(label);
+      else triWarn.push(label);
+    }
+  }
+  if (triWarn.length > 0) {
+    add('geometry', 'Trianguliacija proj. ↔ AI', 'warn',
+      `${triWarn.slice(0, 3).join('; ')}. Nesutapimas >10 % – patikrinkite apimtis (brutto/neto skirtumai yra įprasti, bet verta peržiūrėti).`);
+  }
+  if (triOk.length > 0) {
+    add('geometry', 'Trianguliacija proj. ↔ AI', 'ok',
+      `Projekto duomenys ir AI matavimai sutampa (±10 %): ${triOk.slice(0, 3).join('; ')}.`);
+  }
+
+  // 9) IFC ↔ PDF kryžminis sutikrinimas toje pačioje kategorijoje
+  const ifcItems = items.filter((i) => i.source === 'IFC');
+  const pdfItems = items.filter((i) => i.source === 'PDF');
+  if (ifcItems.length > 0 && pdfItems.length > 0) {
+    const crossOk: string[] = [];
+    const crossWarn: string[] = [];
+    for (const cat of new Set([...ifcItems.map((i) => i.category), ...pdfItems.map((i) => i.category)])) {
+      for (const k of KINDS.slice(0, 2)) { // plotas, tūris
+        const a = ifcItems.filter((i) => i.category === cat).reduce((s, i) => s + (k.get(i) ?? 0), 0);
+        const b = pdfItems.filter((i) => i.category === cat).reduce((s, i) => s + (k.get(i) ?? 0), 0);
+        if (a <= 0 || b <= 0) continue;
+        const label = `${CATEGORY_INFO[cat].lt} (${k.lt}): IFC ${fmt(a)} ${k.unit} vs PDF ${fmt(b)} ${k.unit}`;
+        if (Math.abs(a - b) / Math.max(a, b) <= 0.1) crossOk.push(label);
+        else crossWarn.push(label);
+      }
+    }
+    if (crossWarn.length > 0) {
+      add('geometry', 'Trianguliacija IFC ↔ PDF', 'warn',
+        `${crossWarn.slice(0, 3).join('; ')}. Modelio ir brėžinio kiekiai skiriasi >10 % – patikrinkite, ar abu šaltiniai apima tą pačią apimtį.`);
+    } else if (crossOk.length > 0) {
+      add('geometry', 'Trianguliacija IFC ↔ PDF', 'ok',
+        `IFC modelio ir PDF matavimų kiekiai sutampa (±10 %): ${crossOk.slice(0, 3).join('; ')}.`);
+    }
+  }
+
+  // 10) Pasikartojančios projekto pozicijos (galimas dvigubas įtraukimas)
+  const nameCount = new Map<string, number>();
+  for (const i of items) {
+    if (i.origin !== 'project') continue;
+    const key = `${i.name.trim().toUpperCase().replace(/\s+/g, ' ')}|${i.unit}`;
+    nameCount.set(key, (nameCount.get(key) ?? 0) + 1);
+  }
+  const dupNames = [...nameCount.entries()].filter(([, n]) => n > 1);
+  if (dupNames.length > 0) {
+    add('geometry', 'Pasikartojančios projekto pozicijos', 'warn',
+      `${dupNames.length} pozicijos įtrauktos daugiau nei vieną kartą: ${dupNames.slice(0, 3).map(([n, c]) => `„${n.split('|')[0]}“ ×${c}`).join('; ')}. Jei tai skirtingi brėžinių lapai – ignoruokite, jei tas pats žiniaraštis – palikite vieną.`);
+  }
+
   return checks;
 }

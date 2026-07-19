@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { FilePlus2, FileText, Trash2 } from 'lucide-react';
 import FileDrop from '@/components/FileDrop';
 import PdfViewer from '@/components/PdfViewer';
@@ -17,13 +17,18 @@ interface PdfFileEntry {
 interface Props {
   items: QtoItem[];
   onData: (items: QtoItem[], meta: SourceMeta) => void;
+  /** Išsaugoto projekto failų metaduomenys – kalibracijoms ir pririšimui atkurti */
+  savedFilesMeta?: SourceMeta['pdfFiles'];
 }
 
 /** Projekto režimas: keli susiję PDF failai (A, SK, VK dalys) kaip viena visuma */
-export default function PdfSection({ items, onData }: Props) {
+export default function PdfSection({ items, onData, savedFilesMeta }: Props) {
   const [files, setFiles] = useState<PdfFileEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Išsaugotą failų sąrašą įsimename vieną kartą – vėlesni emit() jo nenublukina,
+  // todėl visi perinkti failai ras savo kalibracijas.
+  const savedRef = useRef(savedFilesMeta);
 
   const active = files.find((f) => f.id === activeId) ?? null;
 
@@ -40,19 +45,23 @@ export default function PdfSection({ items, onData }: Props) {
   };
 
   const addFile = (file: File) => {
+    // Jei failas su tokiu pavadinimu jau buvo projekte – atstatome kalibraciją
+    // ir pririšame atkurtas pozicijas prie naujo failo id.
+    const saved = savedRef.current?.find((s) => s.name === file.name);
     const entry: PdfFileEntry = {
       id: uid(),
       name: file.name,
       file,
-      discipline: detectDiscipline(file.name),
-      unitsPerMeter: null,
-      detectedUpm: null,
+      discipline: saved?.discipline ?? detectDiscipline(file.name),
+      unitsPerMeter: saved?.upm ?? null,
+      detectedUpm: saved?.detectedUpm ?? null,
     };
+    const nextItems = saved ? items.map((i) => (i.pdfFile === saved.id ? { ...i, pdfFile: entry.id } : i)) : items;
     const next = [...files, entry];
     setFiles(next);
     setActiveId(entry.id);
     setAdding(false);
-    emit(items, next);
+    emit(nextItems, next);
   };
 
   const removeFile = (id: string) => {
@@ -97,12 +106,20 @@ export default function PdfSection({ items, onData }: Props) {
 
   if (files.length === 0) {
     return (
-      <FileDrop
+      <div className="space-y-3">
+        {items.length > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+            Atkurtos <strong>{items.length}</strong> pozicijos iš išsaugoto projekto. Įkelkite tuos pačius PDF failus
+            (sutapdinsime pagal pavadinimą) – mastelis, projekto dalis ir pozicijų pririšimas bus atkurti automatiškai.
+          </div>
+        )}
+        <FileDrop
         accept=".pdf"
         label="Įkelkite projekto PDF brėžinius"
         hint="Galite įkelti kelis susijusius failus: architektūros dalį (A), konstrukcijų dalį (SK), inžinerines dalis (VK, E, Š, V). Kiekvienas failas kalibruojamas atskirai, o visi matavimai sueina į bendrą darbų kiekių žiniaraštį."
         onFile={addFile}
       />
+      </div>
     );
   }
 

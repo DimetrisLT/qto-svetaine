@@ -108,7 +108,17 @@ Programa automatiškai tikrina:
 - **Pilnumą** – ar visi PDF failai sukalibruoti (ir ar kalibracija sutampa su brėžinio masteliu ±2 %), ar visi DXF sluoksniai priskirti, ar IFC elementai turi kiekius;
 - **Geometriją** – IFC deklaruoti tūriai lyginami su tūriais iš 3D geometrijos (±20 %), perdangų plotas su patalpų plotu;
 - **Dvigubą skaičiavimą** – tos pačios kategorijos plotų persidengimai (>10 %), sutampantys ilgiai skirtingose projekto dalyse (A ↔ SK, ±5 %), vnt. kiekių neatitiktys tarp plano ir projekto žiniaraščio (OCR);
+- **Trianguliaciją** – nepriklausomų šaltinių kryžminis sutikrinimas:
+  - OCR žiniaraščio pozicijų sumos lyginamos su pačio žiniaraščio „VISO“ eilute (±2 %) – aritmetinė OCR patikra;
+  - projekto duomenys (žiniaraščiai) lyginami su AI matavimais plane toje pačioje kategorijoje (±10 %);
+  - IFC modelio kiekiai lyginami su PDF matavimais toje pačioje kategorijoje (±10 %);
+  - aptinkamos dukart įtrauktos projekto pozicijos (tas pats pavadinimas ir vienetas);
 - **Logiką** – nuliniai/neigiami matmenys, trūkstamos medžiagos.
+
+## Darbo tęstinumas
+
+- **Automatinis saugojimas** – kiekvienas pakeitimas (matavimai, kalibracijos, OCR pozicijos) automatiškai išsaugomas naršyklėje. Užvėrus ir vėl atidarius programą, siūloma **„Tęsti projektą“** – pozicijos ir kalibracijos atkuriamos; tereikia iš naujo įkelti tuos pačius PDF failus (sutapdinami pagal pavadinimą – mastelis ir pozicijų pririšimas atsistato automatiškai).
+- **JSON eksportas / importas** – antraštėje mygtukai **„Projektas“** (atsisiųsti) ir **„Atidaryti“**: visą darbą galima perkelti į kitą kompiuterį ar perduoti kolegai kaip vieną `.json` failą.
 
 ## Technologijos
 
