@@ -43,7 +43,7 @@ export default function Tutorial() {
         <div className="overflow-hidden rounded-2xl border shadow-lg">
           <video key={videoSrc} controls preload="metadata" poster="/tutorial/poster.jpg" className="aspect-video w-full bg-black">
             <source src={videoSrc} type="video/mp4" />
-            <track kind="captions" src={vttSrc} srcLang={locale} label={locale === 'lt' ? 'Lietuvių' : 'English'} default />
+            <track kind="captions" src={vttSrc} srcLang={locale} label={locale === 'lt' ? 'Lietuvių' : 'English'} />
           </video>
         </div>
 
