@@ -70,7 +70,9 @@ interface Props {
   file: File;
   discipline: string;
   unitsPerMeter: number | null;
-  onCalibrate: (upm: number | null) => void;
+  onCalibrate: (upm: number | null, scope?: 'page' | 'all') => void;
+  /** Pranešama, kai vartotojas pereina į kitą puslapį (per-page masteliui) */
+  onPageChange?: (page: number) => void;
   /** Automatiškai aptiktas mastelis (vieną kartą, pirmas sėkmingas) */
   onDetectScale?: (upm: number | null) => void;
   items: QtoItem[];
@@ -79,12 +81,17 @@ interface Props {
   locate?: { pdfPage: number; points: Pt[]; ts: number } | null;
 }
 
-export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onDetectScale, items, onItemsChange, locate = null }: Props) {
-  const { t } = useI18n();
+export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onPageChange, onDetectScale, items, onItemsChange, locate = null }: Props) {
+  const { t, locale } = useI18n();
   const units = useUnitSystem();
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(1);
+  // Puslapių apimtis (dideliems failams – kad neapkrauti programos nereikalingomis analizėmis)
+  const [pageRange, setPageRange] = useState<{ lo: number; hi: number } | null>(null);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [rangeLo, setRangeLo] = useState('1');
+  const [rangeHi, setRangeHi] = useState('1');
   const [zoom, setZoom] = useState(1.6);
   const [tool, setTool] = useState<Tool>('none');
   const [current, setCurrent] = useState<Pt[]>([]);
@@ -135,6 +142,19 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => { onPageChange?.(pageNum); }, [pageNum]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rangeLoBound = pageRange?.lo ?? 1;
+  const rangeHiBound = pageRange?.hi ?? numPages;
+  const applyRange = (l: number, h: number | null) => {
+    const nLo = Math.max(1, Math.min(l, numPages));
+    const nHi = h === null ? numPages : Math.max(nLo, Math.min(h, numPages));
+    setPageRange(nLo === 1 && nHi === numPages ? null : { lo: nLo, hi: nHi });
+    if (pageNum < nLo) setPageNum(nLo);
+    if (pageNum > nHi) setPageNum(nHi);
+    setRangeOpen(false);
+  };
+
   const calibrated = unitsPerMeter !== null && unitsPerMeter > 0;
   const toMeters = useCallback((u: number) => (calibrated ? u / unitsPerMeter! : undefined), [calibrated, unitsPerMeter]);
 
@@ -150,6 +170,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         setPdf(doc);
         setNumPages(doc.numPages);
         setPageNum(1);
+        setPageRange(null);
+        if (doc.numPages > 5) {
+          setRangeLo('1');
+          setRangeHi(String(doc.numPages));
+          setRangeOpen(true);
+        }
         // PDF sluoksniai (OCG) – jei brėžinys eksportuotas su sluoksniais
         try {
           const cfg: any = await doc.getOptionalContentConfig();
@@ -489,7 +515,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     onItemsChange(items.filter((i) => i.id !== id));
   };
 
-  const applyCalibration = () => {
+  const applyCalibration = (scope: 'page' | 'all') => {
     const real = inputToMeters(parseFloat(calibInput.replace(',', '.')), 'm', units);
     if (calibPts.length === 2 && real > 0) {
       const upm = dist(calibPts[0], calibPts[1]) / real;
@@ -497,13 +523,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         const dev = deviationPct(upm, scaleSuggestion.unitsPerMeter);
         setCalibDeviation(dev > 2 ? dev : null);
       }
-      onCalibrate(upm);
+      onCalibrate(upm, scope);
       setTool('none');
+      setCalibPts([]);
+      setCalibInput('');
     }
   };
 
   const resetCalibration = () => {
-    onCalibrate(null);
+    onCalibrate(null, 'all');
     setCalibPts([]);
     setCalibInput('');
   };
@@ -769,7 +797,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
           <span className="mx-1 h-5 w-px bg-border" />
-          <button disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
+          <button disabled={pageNum <= rangeLoBound} onClick={() => setPageNum((p) => Math.max(rangeLoBound, p - 1))} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
           <span className="flex items-center gap-1 text-xs tabular-nums">
             <input
               key={pageNum}
@@ -777,19 +805,19 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const n = parseInt((e.target as HTMLInputElement).value, 10);
-                  if (n >= 1 && n <= numPages) setPageNum(n);
+                  if (n >= rangeLoBound && n <= rangeHiBound) setPageNum(n);
                 }
               }}
               onBlur={(e) => {
                 const n = parseInt(e.target.value, 10);
-                if (n >= 1 && n <= numPages && n !== pageNum) setPageNum(n);
+                if (n >= rangeLoBound && n <= rangeHiBound && n !== pageNum) setPageNum(n);
               }}
               className="h-7 w-11 rounded-md border bg-background px-1 text-center text-xs"
               title={t.pdf.pageNum}
             />
             / {numPages}
           </span>
-          <button disabled={pageNum >= numPages} onClick={() => setPageNum((p) => p + 1)} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
+          <button disabled={pageNum >= rangeHiBound} onClick={() => setPageNum((p) => Math.min(rangeHiBound, p + 1))} className="shrink-0 rounded-lg border p-2 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
           {layers.length > 0 && (
             <span className="relative">
               <span className="mx-1 h-5 w-px bg-border" />
@@ -840,7 +868,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               {t.pdf.detected} <b>{scaleSuggestion.paperName}</b> {t.pdf.sheetWord} <b>1:{scaleSuggestion.scale}</b>.
             </span>
             <button
-              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
+              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter, 'page'); setCalibDeviation(null); }}
               className="rounded-md bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700"
             >
               {t.pdf.applyScale}
@@ -859,7 +887,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               </span>
             )}
             <button
-              onClick={() => { onCalibrate(ocrScale ? ocrScale.unitsPerMeter : dimScale!.unitsPerMeter); setCalibDeviation(null); }}
+              onClick={() => { onCalibrate(ocrScale ? ocrScale.unitsPerMeter : dimScale!.unitsPerMeter, 'page'); setCalibDeviation(null); }}
               className="rounded-md bg-sky-600 px-2.5 py-1 font-semibold text-white hover:bg-sky-700"
             >
               {t.pdf.applyScale}
@@ -878,7 +906,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                     key={s}
                     onClick={() => {
                       const upm = unitsPerMeterFor(viewSize.w / zoom, viewSize.h / zoom, s);
-                      if (upm) onCalibrate(upm);
+                      if (upm) onCalibrate(upm, 'page');
                     }}
                     className="rounded-md border border-amber-400 bg-white/60 px-2 py-0.5 font-semibold hover:bg-amber-100 dark:bg-transparent"
                   >
@@ -894,12 +922,34 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           <p className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
             {t.pdf.devA} {fmt(calibDeviation, 1)} % {t.pdf.devB} 1:{scaleSuggestion.scale} ({scaleSuggestion.paperName}). {t.pdf.devCheck}{' '}
             <button
-              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
+              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter, 'page'); setCalibDeviation(null); }}
               className="font-semibold underline"
             >
               {t.pdf.devApply}
             </button>.
           </p>
+        )}
+
+        {/* Puslapių apimties pasirinkimas (dideliems failams) */}
+        {rangeOpen && numPages > 1 && (
+          <div className="mb-2 rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">
+            <p className="font-medium">{t.pdf.pagesTitle} <span className="font-normal text-indigo-800/70 dark:text-indigo-300/70">({numPages})</span></p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <label className="flex items-center gap-1">{t.pdf.pagesFrom}
+                <input value={rangeLo} onChange={(e) => setRangeLo(e.target.value)} inputMode="numeric"
+                  className="h-8 w-16 rounded-md border bg-background px-2 text-center" />
+              </label>
+              <label className="flex items-center gap-1">{t.pdf.pagesTo}
+                <input value={rangeHi} onChange={(e) => setRangeHi(e.target.value)} inputMode="numeric"
+                  className="h-8 w-16 rounded-md border bg-background px-2 text-center" />
+              </label>
+              <button
+                onClick={() => applyRange(parseInt(rangeLo, 10) || 1, parseInt(rangeHi, 10) || numPages)}
+                className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground"
+              >{t.pdf.pagesApply}</button>
+              <button onClick={() => applyRange(1, null)} className="rounded-md border px-3 py-1.5 hover:bg-muted">{t.pdf.pagesAll}</button>
+            </div>
+          </div>
         )}
 
         {/* Brėžinys + perdanga */}
@@ -987,12 +1037,46 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               )}
             </svg>
           </div>
-        {/* Slankiojantis puslapių perjungiklis – visada matomas (ir mobiliajame) */}
+        {/* Slankiosios valdymo kortelės: kalibravimas + puslapių perjungiklis */}
+        <div className="sticky bottom-3 z-30 mx-auto flex w-fit max-w-full flex-col items-center gap-2">
+        {tool === 'calib' && (
+          <div className="w-80 max-w-[92vw] space-y-2 rounded-xl border bg-card/95 p-3 shadow-lg backdrop-blur">
+            <p className="text-sm font-semibold">{t.pdf.calibTitle} <span className="text-xs font-normal text-muted-foreground">({t.pdf.pageShort}{pageNum})</span></p>
+            <p className="text-xs text-muted-foreground">
+              {calibPts.length < 2
+                ? `${t.pdf.calibClickA} ${calibPts.length === 0 ? t.pdf.calibFirst : t.pdf.calibSecond} ${t.pdf.calibClickB}`
+                : t.pdf.calibEnter}
+            </p>
+            {calibPts.length === 2 && (
+              <>
+                <input
+                  value={calibInput}
+                  onChange={(e) => setCalibInput(e.target.value)}
+                  placeholder={locale === 'lt' ? 'pvz., 6.00' : 'e.g., 6.00'}
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  inputMode="decimal"
+                  autoFocus
+                />
+                <div className="flex gap-1.5">
+                  <button onClick={() => applyCalibration('page')} className="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted">{t.pdf.applyPage}</button>
+                  <button onClick={() => applyCalibration('all')} className="flex-1 rounded-md bg-primary px-2 py-1.5 text-xs font-medium text-primary-foreground">{t.pdf.applyAll}</button>
+                </div>
+              </>
+            )}
+            {calibrated && (
+              <p className="text-xs text-emerald-600">{t.pdf.calibActive} {fmt(unitsPerMeter!, 1)} {t.pdf.upm}</p>
+            )}
+            {calibrated && (
+              <button onClick={resetCalibration} className="text-xs text-muted-foreground underline">{t.pdf.calibReset}</button>
+            )}
+            <p className="text-[10px] leading-snug text-muted-foreground">{t.pdf.calibPageNote}</p>
+          </div>
+        )}
         {numPages > 1 && (
-          <div className="sticky bottom-3 z-30 mx-auto flex w-fit items-center gap-1 rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur">
+          <div className="flex w-fit items-center gap-1 rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur">
             <button
-              disabled={pageNum <= 1}
-              onClick={() => setPageNum((p) => p - 1)}
+              disabled={pageNum <= rangeLoBound}
+              onClick={() => setPageNum((p) => Math.max(rangeLoBound, p - 1))}
               className="rounded-full p-2 hover:bg-muted disabled:opacity-40"
               title={t.pdf.pageNum}
             ><ChevronLeft className="h-4 w-4" /></button>
@@ -1004,12 +1088,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const n = parseInt((e.target as HTMLInputElement).value, 10);
-                    if (n >= 1 && n <= numPages) setPageNum(n);
+                    if (n >= rangeLoBound && n <= rangeHiBound) setPageNum(n);
                   }
                 }}
                 onBlur={(e) => {
                   const n = parseInt(e.target.value, 10);
-                  if (n >= 1 && n <= numPages && n !== pageNum) setPageNum(n);
+                  if (n >= rangeLoBound && n <= rangeHiBound && n !== pageNum) setPageNum(n);
                 }}
                 className="h-6 w-9 rounded-md border bg-background px-1 text-center text-xs"
                 title={t.pdf.pageNum}
@@ -1017,13 +1101,19 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               / {numPages}
             </span>
             <button
-              disabled={pageNum >= numPages}
-              onClick={() => setPageNum((p) => p + 1)}
+              disabled={pageNum >= rangeHiBound}
+              onClick={() => setPageNum((p) => Math.min(rangeHiBound, p + 1))}
               className="rounded-full p-2 hover:bg-muted disabled:opacity-40"
               title={t.pdf.pageNum}
             ><ChevronRight className="h-4 w-4" /></button>
+            <button
+              onClick={() => { setRangeLo(String(rangeLoBound)); setRangeHi(String(rangeHiBound)); setRangeOpen(true); }}
+              className="ml-0.5 rounded-full border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted"
+              title={t.pdf.pagesEdit}
+            >{pageRange ? `${rangeLoBound}–${rangeHiBound}` : t.pdf.pagesAll}</button>
           </div>
         )}
+        </div>
         </div>
       </div>
       {/* Šoninis stulpelis */}
@@ -1129,36 +1219,6 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             <ClipboardPlus className="h-3.5 w-3.5" /> {t.pdf.manualEntry}
           </button>
         )}
-        {/* Kalibravimo forma */}
-        {tool === 'calib' && (
-          <div className="rounded-xl border p-3 space-y-2">
-            <p className="text-sm font-semibold">{t.pdf.calibTitle}</p>
-            <p className="text-xs text-muted-foreground">
-              {calibPts.length < 2
-                ? `${t.pdf.calibClickA} ${calibPts.length === 0 ? t.pdf.calibFirst : t.pdf.calibSecond} ${t.pdf.calibClickB}`
-                : t.pdf.calibEnter}
-            </p>
-            {calibPts.length === 2 && (
-              <div className="flex gap-1.5">
-                <input
-                  value={calibInput}
-                  onChange={(e) => setCalibInput(e.target.value)}
-                  placeholder="pvz., 6.00"
-                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                  inputMode="decimal"
-                />
-                <button onClick={applyCalibration} className="rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">OK</button>
-              </div>
-            )}
-            {calibrated && (
-              <p className="text-xs text-emerald-600">{t.pdf.calibActive} {fmt(unitsPerMeter!, 1)} {t.pdf.upm}</p>
-            )}
-            {calibrated && (
-              <button onClick={resetCalibration} className="text-xs text-muted-foreground underline">{t.pdf.calibReset}</button>
-            )}
-          </div>
-        )}
-
         {/* Naujo matavimo forma: telefone – lipni apatinė kortelė (bottom sheet) */}
         {form && (
           <div className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">

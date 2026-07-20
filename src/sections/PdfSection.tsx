@@ -14,6 +14,8 @@ interface PdfFileEntry {
   discipline: string;
   unitsPerMeter: number | null;
   detectedUpm: number | null;
+  /** Skirtingas mastelis atskiriems puslapiams */
+  upmByPage?: Record<number, number>;
 }
 
 interface Props {
@@ -41,7 +43,7 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
       const prev = savedRef.current ?? [];
       savedRef.current = savedFilesMeta.map((f) => {
         const old = prev.find((x) => x.name === f.name);
-        return old?.upm && !f.upm ? { ...f, upm: old.upm } : f;
+        return (old?.upm || old?.upmByPage) && !f.upm && !f.upmByPage ? { ...f, upm: old.upm ?? null, upmByPage: old.upmByPage ?? undefined } : f;
       });
     }
   }, [savedFilesMeta]);
@@ -65,10 +67,11 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
     onData(nextItems, {
       source: 'PDF',
       parsed: nextFiles.length > 0,
-      scaleCalibrated: nextFiles.every((f) => f.unitsPerMeter !== null),
+      scaleCalibrated: nextFiles.every((f) => f.unitsPerMeter !== null || Object.keys(f.upmByPage ?? {}).length > 0),
       pdfFiles: nextFiles.map((f) => ({
-        id: f.id, name: f.name, discipline: f.discipline, calibrated: f.unitsPerMeter !== null,
-        upm: f.unitsPerMeter, detectedUpm: f.detectedUpm,
+        id: f.id, name: f.name, discipline: f.discipline,
+        calibrated: f.unitsPerMeter !== null || Object.keys(f.upmByPage ?? {}).length > 0,
+        upm: f.unitsPerMeter, detectedUpm: f.detectedUpm, upmByPage: f.upmByPage ?? null,
       })),
     });
   };
@@ -84,6 +87,7 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
       discipline: saved?.discipline ?? detectDiscipline(file.name),
       unitsPerMeter: saved?.upm ?? null,
       detectedUpm: saved?.detectedUpm ?? null,
+      upmByPage: saved?.upmByPage ?? undefined,
     };
     const nextItems = saved ? items.map((i) => (i.pdfFile === saved.id ? { ...i, pdfFile: entry.id } : i)) : items;
     const next = [...files, entry];
@@ -109,8 +113,20 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
     emit(nextItems, nextFiles);
   };
 
-  const setCalibration = (id: string, upm: number | null) => {
-    const nextFiles = files.map((f) => (f.id === id ? { ...f, unitsPerMeter: upm } : f));
+  const setCalibration = (id: string, upm: number | null, scope: 'page' | 'all' = 'all', page = 1) => {
+    const nextFiles = files.map((f) => {
+      if (f.id !== id) return f;
+      if (scope === 'all') {
+        // Taikoma visiems: failo numatytoji + išmetame pasenusių per-page reikšmių (paliekame kitų lapų)
+        const upmByPage = { ...(f.upmByPage ?? {}) };
+        if (upm === null) return { ...f, unitsPerMeter: null, upmByPage: undefined };
+        delete upmByPage[page];
+        return { ...f, unitsPerMeter: upm, upmByPage: Object.keys(upmByPage).length ? upmByPage : undefined };
+      }
+      const upmByPage = { ...(f.upmByPage ?? {}) };
+      if (upm === null) delete upmByPage[page]; else upmByPage[page] = upm;
+      return { ...f, upmByPage: Object.keys(upmByPage).length ? upmByPage : undefined };
+    });
     setFiles(nextFiles);
     emit(items, nextFiles);
   };
@@ -126,6 +142,8 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
     });
   };
 
+  const [pageByFile, setPageByFile] = useState<Record<string, number>>({});
+  const activePage = active ? (pageByFile[active.id] ?? 1) : 1;
   const activeItems = useMemo(() => items.filter((i) => i.pdfFile === activeId), [items, activeId]);
 
   const handleItemsChange = (nextFileItems: QtoItem[]) => {
@@ -182,13 +200,13 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
             <span
               className={cn(
                 'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                f.unitsPerMeter
+                f.unitsPerMeter || Object.keys(f.upmByPage ?? {}).length > 0
                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
               )}
-              title={f.unitsPerMeter ? t.pdf.calibrated : t.pdf.needCalibrate}
+              title={f.unitsPerMeter || Object.keys(f.upmByPage ?? {}).length > 0 ? t.pdf.calibrated : t.pdf.needCalibrate}
             >
-              {f.unitsPerMeter ? t.pdf.scaleOk : t.pdf.scaleMissing}
+              {f.unitsPerMeter || Object.keys(f.upmByPage ?? {}).length > 0 ? t.pdf.scaleOk : t.pdf.scaleMissing}
             </span>
             <button onClick={() => removeFile(f.id)} className="text-muted-foreground hover:text-destructive" title={t.pdf.removeFile}>
               <Trash2 className="h-3.5 w-3.5" />
@@ -221,8 +239,9 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
           fileId={active.id}
           file={active.file}
           discipline={active.discipline}
-          unitsPerMeter={active.unitsPerMeter}
-          onCalibrate={(upm) => setCalibration(active.id, upm)}
+          unitsPerMeter={active.upmByPage?.[activePage] ?? active.unitsPerMeter}
+          onCalibrate={(upm, scope) => setCalibration(active.id, upm, scope ?? 'all', activePage)}
+          onPageChange={(p) => setPageByFile((m) => ({ ...m, [active.id]: p }))}
           onDetectScale={(upm) => setDetectedScale(active.id, upm)}
           items={activeItems}
           onItemsChange={handleItemsChange}

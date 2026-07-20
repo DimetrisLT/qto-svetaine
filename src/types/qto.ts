@@ -141,6 +141,8 @@ export interface SourceMeta {
     upm?: number | null;
     /** Automatiškai aptikta vienetų/m (iš mastelio žymos + lapo formato) */
     detectedUpm?: number | null;
+    /** Skirtingas mastelis atskiriems puslapiams: puslapio nr. → vienetų/m */
+    upmByPage?: Record<number, number> | null;
   }>;
   /** DXF: sluoksniai, nepriskirti jokiai kategorijai */
   unassignedLayers?: string[];
