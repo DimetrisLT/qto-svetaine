@@ -123,6 +123,7 @@ const en: typeof lt = {
   guide: {
     steps: [
       { title: 'Upload', text: 'IFC, PDF, or DXF — files stay in your browser' },
+      { title: 'Auto schedules', text: 'One click reads the quantities from the project schedules' },
       { title: 'Measure', text: 'Scale is detected automatically, the cursor snaps' },
       { title: 'Download', text: 'Excel schedule, PDF report, self-check' },
     ],
@@ -166,7 +167,7 @@ const en: typeof lt = {
     addAnother: 'Add another PDF', removeFile: 'Remove file',
     calibrated: 'Scale calibrated', needCalibrate: 'Scale calibration needed',
     openError: 'Could not open the PDF file. Make sure it is not corrupted.',
-    tools: { calib: 'Scale', length: 'Length (walls)', area: 'Area', count: 'Count', match: 'Symbols', scan: 'Schedule (OCR)' },
+    tools: { calib: 'Scale', length: 'Length (walls)', area: 'Area', count: 'Count', match: 'Symbols', scan: 'Schedule (OCR)', auto: 'Auto schedules' },
     pageNum: 'Page number (Enter to jump)',
     notCalibrated: 'Scale not calibrated — values are approximate',
     calibTitle: 'Scale calibration',
@@ -221,6 +222,9 @@ const en: typeof lt = {
     ref: 'reference', upm: 'units/m',
     scanHintA: 'Press and drag a frame over the', scanHintB: 'on the drawing – the app will read the rows (name, unit, qty) and let you review before adding.',
     scanning: 'Reading (OCR)…', scannedArea: 'Scanned area:',
+    autoScanning: 'Auto-scanning for schedules', autoPage: 'p.',
+    autoNone: 'No schedules found automatically. Try selecting the schedule area manually (the "Schedule (OCR)" tool).',
+    autoCancel: 'Cancel', autoHint: 'Scans all selected pages and collects quantity rows from the project schedules.',
     matchHintA: 'Press and drag a frame over', matchHintB: '(door, window, column, light fixture mark) – the app will find all identical ones on the page and let you review before counting.',
     oneSymbol: 'a single symbol',
     matching: 'Searching for symbols…', found: 'Found', foundOf: 'of',

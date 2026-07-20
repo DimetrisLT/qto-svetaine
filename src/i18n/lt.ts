@@ -121,6 +121,7 @@ const lt = {
   guide: {
     steps: [
       { title: 'Įkelkite', text: 'IFC, PDF arba DXF – failai lieka jūsų naršyklėje' },
+      { title: 'Auto žiniaraščiai', text: 'Vienas paspaudimas nuskaito kiekius iš projekto žiniaraščių' },
       { title: 'Matuokite', text: 'Mastelis aptinkamas automatiškai, kursorius prisiriša' },
       { title: 'Atsisiųskite', text: 'Žiniaraštis Excel, PDF ataskaita, savikontrolė' },
     ],
@@ -165,7 +166,7 @@ const lt = {
     addAnother: 'Pridėti dar vieną PDF', removeFile: 'Pašalinti failą',
     calibrated: 'Mastelis sukalibruotas', needCalibrate: 'Reikia kalibruoti mastelį',
     openError: 'Nepavyko atidaryti PDF failo. Patikrinkite, ar failas nepažeistas.',
-    tools: { calib: 'Mastelis', length: 'Ilgis (sienos)', area: 'Plotas', count: 'Skaičiuoti', match: 'Simboliai', scan: 'Žiniaraštis (OCR)' },
+    tools: { calib: 'Mastelis', length: 'Ilgis (sienos)', area: 'Plotas', count: 'Skaičiuoti', match: 'Simboliai', scan: 'Žiniaraštis (OCR)', auto: 'Auto žiniaraščiai' },
     pageNum: 'Puslapio numeris (Enter – peršokti)',
     notCalibrated: 'Mastelis nekalibruotas – reikšmės sąlyginės',
     calibTitle: 'Mastelio kalibravimas',
@@ -220,6 +221,9 @@ const lt = {
     ref: 'etalonas', upm: 'vnt./m',
     scanHintA: 'Nuspauskite ir užtempkite rėmelį ant', scanHintB: 'brėžinyje – programa nuskaitys pozicijas (pavadinimas, vnt., kiekis) ir leis patikrinti prieš įtraukiant.',
     scanning: 'Skaitoma (OCR)…', scannedArea: 'Nuskaityta sritis:',
+    autoScanning: 'Automatiškai ieškoma žiniaraščių', autoPage: 'psl.',
+    autoNone: 'Žiniaraščių nepavyko rasti automatiškai. Pažymėkite žiniaraščio sritį rankiniu būdu („Žiniaraštis (OCR)“ įrankis).',
+    autoCancel: 'Atšaukti', autoHint: 'Nuskaito visus pasirinktus puslapius ir surenka kiekių eilutes iš projekto žiniaraščių.',
     matchHintA: 'Nuspauskite ir užtempkite rėmelį ant', matchHintB: '(durų, lango, gaubto, šviestuvo grafiklio) – programa ras visus identiškus puslapyje ir leis patikrinti prieš skaičiuojant.',
     oneSymbol: 'vieno simbolio',
     matching: 'Ieškoma simbolių…', found: 'Rasta', foundOf: 'iš',

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, fmtQty, round, uLabel } from '@/lib/format';
@@ -65,6 +65,21 @@ interface PendingForm {
   deductOpenings?: boolean;
 }
 
+/** pdf.js teksto sluoksnis → eilutės (grupuoja pagal Y, rikiuoja pagal X) */
+function textContentToLines(tc: { items: unknown[] }): string {
+  const words = (tc.items as Array<{ str?: string; transform?: number[] }>)
+    .filter((it) => it.str && it.str.trim() && it.transform)
+    .map((it) => ({ x: it.transform![4], y: it.transform![5], str: it.str!.trim() }));
+  words.sort((a, b) => a.y - b.y || a.x - b.x);
+  const lines: Array<{ y: number; parts: typeof words }> = [];
+  for (const w of words) {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(w.y - last.y) <= 3) last.parts.push(w);
+    else lines.push({ y: w.y, parts: [w] });
+  }
+  return lines.map((l) => l.parts.sort((a, b) => a.x - b.x).map((w) => w.str).join(' ')).join('\n');
+}
+
 interface Props {
   fileId: string;
   file: File;
@@ -102,6 +117,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
   const [scanRect, setScanRect] = useState<ScanRect | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
+  const autoCancelRef = useRef(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ScannedRow[] | null>(null);
@@ -699,6 +716,60 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     }
   };
 
+  /** Automatinė žiniaraščių paieška visame pasirinktame puslapių diapazone */
+  const runAutoScan = async () => {
+    if (!pdf) return;
+    autoCancelRef.current = false;
+    setScanning(true);
+    setScanError(null);
+    const total = rangeHiBound - rangeLoBound + 1;
+    setScanProgress({ done: 0, total });
+    const found: ScannedRow[] = [];
+    let pagesWithRows = 0;
+    try {
+      for (let p = rangeLoBound; p <= rangeHiBound; p++) {
+        if (autoCancelRef.current) break;
+        const page = await pdf.getPage(p);
+        let text = '';
+        try { text = textContentToLines(await page.getTextContent()); } catch { /* nėra teksto sluoksnio */ }
+        let rows = parseScheduleText(text);
+        if (rows.length < 2 && text.length < 80) {
+          // Skenuotas puslapis be teksto sluoksnio – pilnas OCR
+          const scale = 2;
+          const c = document.createElement('canvas');
+          const vp = page.getViewport({ scale });
+          c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+          const cctx = c.getContext('2d')!;
+          cctx.fillStyle = '#fff'; cctx.fillRect(0, 0, c.width, c.height);
+          await page.render({ canvas: c, canvasContext: cctx, viewport: vp }).promise;
+          rows = parseScheduleText(await ocrCanvas(c));
+        }
+        if (rows.length >= 2) {
+          pagesWithRows++;
+          for (const r of rows) r.page = p;
+          found.push(...rows);
+        }
+        setScanProgress({ done: p - rangeLoBound + 1, total });
+      }
+      if (found.length === 0) {
+        setScanError(t.pdf.autoNone);
+      } else {
+        visoRef.current = undefined;
+        setReviewRows(found);
+        setReviewTitle(L({
+          lt: `Auto paieška: ${found.length} poz. iš ${pagesWithRows} psl. – patikrinkite prieš įtraukdami`,
+          en: `Auto scan: ${found.length} rows from ${pagesWithRows} pages – review before importing`,
+        }));
+      }
+    } catch (err) {
+      console.error(err);
+      setScanError(t.pdf.ocrFail);
+    } finally {
+      setScanning(false);
+      setScanProgress(null);
+    }
+  };
+
   const openManualEntry = () => {
     setScanError(null);
     setReviewRows([]);
@@ -706,7 +777,16 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const saveReview = (rows: ScannedRow[]) => {
-    const newItems = rowsToItems(rows, { fileId, fileName: file.name, discipline, page: pageNum }, visoRef.current);
+    // Auto nuskaitymas: eilutės gali būti iš skirtingų puslapių – grupuojame
+    const byPage = new Map<number, ScannedRow[]>();
+    for (const r of rows) {
+      const p = r.page ?? pageNum;
+      byPage.set(p, [...(byPage.get(p) ?? []), r]);
+    }
+    const newItems: QtoItem[] = [];
+    for (const [p, rs] of byPage) {
+      newItems.push(...rowsToItems(rs, { fileId, fileName: file.name, discipline, page: p }, visoRef.current));
+    }
     if (newItems.length) onItemsChange([...items, ...newItems]);
     visoRef.current = undefined;
     setReviewRows(null);
@@ -793,6 +873,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('count', <Hash className="h-3.5 w-3.5" />, t.pdf.tools.count)}
           {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, t.pdf.tools.match)}
           {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, t.pdf.tools.scan)}
+          <button
+            onClick={() => void runAutoScan()}
+            disabled={scanning}
+            title={t.pdf.autoHint}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/60 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" />{t.pdf.tools.auto}
+          </button>
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
@@ -1126,8 +1214,20 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         )}
         {scanning && (
           <div className="rounded-xl border p-3 text-sm">
-            <p className="font-medium">{t.pdf.scanning}</p>
-            <p className="text-xs text-muted-foreground">{t.pdf.ocrFirst}</p>
+            <p className="font-medium">{scanProgress ? t.pdf.autoScanning : t.pdf.scanning}</p>
+            {scanProgress ? (
+              <div className="mt-2 space-y-1.5">
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.round((scanProgress.done / scanProgress.total) * 100)}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{t.pdf.autoPage} {rangeLoBound + scanProgress.done} / {rangeHiBound}</span>
+                  <button onClick={() => { autoCancelRef.current = true; }} className="rounded-md border px-2 py-0.5 hover:bg-muted">{t.pdf.autoCancel}</button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t.pdf.ocrFirst}</p>
+            )}
           </div>
         )}
         {scanError && (

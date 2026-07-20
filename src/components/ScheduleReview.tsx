@@ -60,11 +60,16 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
                   <input type="checkbox" checked={r.include} onChange={(e) => update(r.id, { include: e.target.checked })} />
                 </td>
                 <td className="px-1 py-1">
-                  <input
-                    value={r.name}
-                    onChange={(e) => update(r.id, { name: e.target.value })}
-                    className="h-7 w-full min-w-[180px] rounded border bg-background px-1"
-                  />
+                  <div className="flex items-center gap-1">
+                    {r.page !== undefined && (
+                      <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground">p.{r.page}</span>
+                    )}
+                    <input
+                      value={r.name}
+                      onChange={(e) => update(r.id, { name: e.target.value })}
+                      className="h-7 w-full min-w-[180px] rounded border bg-background px-1"
+                    />
+                  </div>
                 </td>
                 <td className="px-1 py-1">
                   <select

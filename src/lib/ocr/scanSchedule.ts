@@ -69,6 +69,8 @@ export interface ScannedRow {
   material?: string;
   /** Originali OCR eilutė (kontrolai) */
   raw: string;
+  /** Puslapis, kuriame rasta eilutė (auto nuskaitymui) */
+  page?: number;
 }
 
 const CATEGORY_KEYWORDS: Array<[RegExp, ElementCategory]> = [
