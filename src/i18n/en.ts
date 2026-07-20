@@ -16,6 +16,9 @@ const en: typeof lt = {
     planSheet: 'A-101 · floor plan · 1/8"=1\'-0"', planScale: '✓ scale',
     tagV2: 'v2 · quantity takeoff',
     demoDim: '16.1 ft', demoChip: '03.1 Walls · 16.1 ft ✓',
+    demoRoomA: 'LIVING ROOM', demoRoomAArea: '31.4 m²',
+    demoRoomB: 'BEDROOM', demoRoomBArea: '14.2 m²',
+    demoRoomC: 'BATHROOM', demoRoomCArea: '6.1 m²',
     demoA: 'The demo replays itself — or move your mouse: the cursor',
     demoB: 'snaps to corners', demoC: ', just like in the app',
     stats: [

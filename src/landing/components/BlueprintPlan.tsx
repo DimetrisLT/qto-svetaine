@@ -154,12 +154,12 @@ export default function BlueprintPlan() {
 
       {/* Patalpų žymos */}
       <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.6 }}>
-        <text x={360} y={400} textAnchor="middle" fontSize={26} fill="#e2e8f0" letterSpacing={2}>GYVENAMASIS</text>
-        <text x={360} y={432} textAnchor="middle" fontSize={18} fill="#7dd3fc" className="font-dim">31,4 m²</text>
-        <text x={885} y={330} textAnchor="middle" fontSize={22} fill="#e2e8f0" letterSpacing={2}>MIEMASIS</text>
-        <text x={885} y={360} textAnchor="middle" fontSize={16} fill="#7dd3fc" className="font-dim">14,2 m²</text>
-        <text x={885} y={640} textAnchor="middle" fontSize={20} fill="#e2e8f0" letterSpacing={2}>VONIA</text>
-        <text x={885} y={668} textAnchor="middle" fontSize={15} fill="#7dd3fc" className="font-dim">6,1 m²</text>
+        <text x={360} y={400} textAnchor="middle" fontSize={26} fill="#e2e8f0" letterSpacing={2}>{t.hero.demoRoomA}</text>
+        <text x={360} y={432} textAnchor="middle" fontSize={18} fill="#7dd3fc" className="font-dim">{t.hero.demoRoomAArea}</text>
+        <text x={885} y={330} textAnchor="middle" fontSize={22} fill="#e2e8f0" letterSpacing={2}>{t.hero.demoRoomB}</text>
+        <text x={885} y={360} textAnchor="middle" fontSize={16} fill="#7dd3fc" className="font-dim">{t.hero.demoRoomBArea}</text>
+        <text x={885} y={640} textAnchor="middle" fontSize={20} fill="#e2e8f0" letterSpacing={2}>{t.hero.demoRoomC}</text>
+        <text x={885} y={668} textAnchor="middle" fontSize={15} fill="#7dd3fc" className="font-dim">{t.hero.demoRoomCArea}</text>
       </motion.g>
 
       {/* Matmenų linija apačioje */}

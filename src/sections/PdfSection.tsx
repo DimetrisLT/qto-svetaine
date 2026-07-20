@@ -27,7 +27,7 @@ interface Props {
 
 /** Projekto režimas: keli susiję PDF failai (A, SK, VK dalys) kaip viena visuma */
 export default function PdfSection({ items, onData, savedFilesMeta, locate = null }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [files, setFiles] = useState<PdfFileEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -146,7 +146,7 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
         label={t.pdf.drop}
         hint={t.pdf.hint}
         onFile={addFile}
-        sample={{ url: '/pavyzdys-planas.pdf', fileName: 'pavyzdys-planas.pdf' }}
+        sample={{ url: locale === 'en' ? '/sample-plan.pdf' : '/pavyzdys-planas.pdf', fileName: locale === 'en' ? 'sample-plan.pdf' : 'pavyzdys-planas.pdf' }}
       />
       <EmptyGuide />
       </div>

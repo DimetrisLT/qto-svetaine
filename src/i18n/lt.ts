@@ -14,6 +14,9 @@ const lt = {
     planSheet: 'A-101 · aukštų planas · M1:100', planScale: '✓ mastelis',
     tagV2: 'v2 · kiekių surinkimas',
     demoDim: '4,90 m', demoChip: '03.1 Sienos · 4,90 m ✓',
+    demoRoomA: 'GYVENAMASIS', demoRoomAArea: '31,4 m²',
+    demoRoomB: 'MIEMASIS', demoRoomBArea: '14,2 m²',
+    demoRoomC: 'VONIA', demoRoomCArea: '6,1 m²',
     demoA: 'Demonstracija kartojasi pati — arba užveskite pelę: kursorius',
     demoB: 'prisiriša prie kampų', demoC: ', kaip programoje',
     stats: [
