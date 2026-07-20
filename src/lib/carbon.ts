@@ -2,6 +2,7 @@
 // Koeficientai – orientaciniai, sutraukti iš viešų šaltinių (ICE Database v3/v4,
 // gamintojų EPD vidurkiai). Skirta ankstyvam palyginimui, ne sertifikuotam LCA.
 import type { ElementCategory, QtoItem } from '@/types/qto';
+import { L } from '@/i18n/store';
 
 export interface CarbonFactor {
   /** kg CO₂e už bazinį vienetą */
@@ -13,14 +14,14 @@ export interface CarbonFactor {
 
 /** Raktai: betonas, armatura, mūras, gipsas, mediena, izoliacija, stiklas, plienas */
 export const CARBON_FACTORS: Record<string, CarbonFactor> = {
-  concrete: { factor: 250, basis: 'm3', label: 'Betonas (C30/37)' },
-  rebar: { factor: 1.4, basis: 'kg', label: 'Armatūrinis plienas' },
-  masonry: { factor: 220, basis: 'm3', label: 'Mūras (keraminis)' },
-  gypsum: { factor: 3.5, basis: 'm2', label: 'Gipso kartonas' },
-  timber: { factor: 50, basis: 'm3', label: 'Mediena / medienos gaminiai' },
-  insulation: { factor: 4, basis: 'm2', label: 'Šilumos izoliacija (~100 mm)' },
-  glass: { factor: 20, basis: 'm2', label: 'Stiklas / stiklo paketas' },
-  steel: { factor: 1.9, basis: 'kg', label: 'Konstrukcinis plienas' },
+  concrete: { factor: 250, basis: 'm3', label: L({ lt: 'Betonas (C30/37)', en: 'Concrete (C30/37)' }) },
+  rebar: { factor: 1.4, basis: 'kg', label: L({ lt: 'Armatūrinis plienas', en: 'Reinforcing steel' }) },
+  masonry: { factor: 220, basis: 'm3', label: L({ lt: 'Mūras (keraminis)', en: 'Masonry (clay)' }) },
+  gypsum: { factor: 3.5, basis: 'm2', label: L({ lt: 'Gipso kartonas', en: 'Gypsum board' }) },
+  timber: { factor: 50, basis: 'm3', label: L({ lt: 'Mediena / medienos gaminiai', en: 'Timber / wood products' }) },
+  insulation: { factor: 4, basis: 'm2', label: L({ lt: 'Šilumos izoliacija (~100 mm)', en: 'Thermal insulation (~4 in)' }) },
+  glass: { factor: 20, basis: 'm2', label: L({ lt: 'Stiklas / stiklo paketas', en: 'Glass / glazing unit' }) },
+  steel: { factor: 1.9, basis: 'kg', label: L({ lt: 'Konstrukcinis plienas', en: 'Structural steel' }) },
 };
 
 const MATERIAL_HINTS: [RegExp, keyof typeof CARBON_FACTORS][] = [
@@ -80,7 +81,7 @@ export function estimateItemCarbon(item: QtoItem): ItemCarbon | null {
       break;
     case 'kg':
       if (item.unit === 'kg' && item.count > 0) { qty = item.count; unitTxt = 'kg'; }
-      else if (item.volume_m3 !== undefined && item.volume_m3 > 0) { qty = item.volume_m3 * 7850; unitTxt = 'kg (iš tūrio)'; }
+      else if (item.volume_m3 !== undefined && item.volume_m3 > 0) { qty = item.volume_m3 * 7850; unitTxt = L({ lt: 'kg (iš tūrio)', en: 'kg (from volume)' }); }
       break;
     case 'vnt':
       qty = item.count;

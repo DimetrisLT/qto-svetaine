@@ -1,38 +1,13 @@
 import { motion } from 'framer-motion';
 import { Upload, Ruler, Crosshair, FileSpreadsheet } from 'lucide-react';
+import { useI18n } from '@/i18n/I18nContext';
 
-const STEPS = [
-  {
-    icon: Upload,
-    num: '01',
-    title: 'Įkelkite projektą',
-    text: 'Vieną ar kelis susijusius PDF (A, SK, VK, E dalys), IFC modelį ar DXF. Programa dalis atpažįsta iš failų pavadinimų.',
-    tag: 'drag & drop',
-  },
-  {
-    icon: Ruler,
-    num: '02',
-    title: 'Mastelis — automatiškai',
-    text: 'Programa atpažįsta „M1:100“ žymas ir lapo formatus, pasiūlo mastelį, o nukrypus >2 % nuo brėžinio — įspėja.',
-    tag: '±2 % kontrolė',
-  },
-  {
-    icon: Crosshair,
-    num: '03',
-    title: 'Matuokite su snapping',
-    text: 'Kursorius pats prisiriša prie linijų galų, vidurių ir kraštinių. Žiniaraščius brėžinyje nuskaito OCR — jūs tik patvirtinate.',
-    tag: 'proj. / AI žymos',
-  },
-  {
-    icon: FileSpreadsheet,
-    num: '04',
-    title: 'Žiniaraštis į Excel',
-    text: 'Kiekiai sugrupuojami pagal darbų grupes (02.1, 02.2…) su kilmės žymomis ir savikontrole. Paruošta sąmatoms.',
-    tag: '4 lapai XLSX',
-  },
-];
+const ICONS = [Upload, Ruler, Crosshair, FileSpreadsheet];
+
 
 export default function HowItWorks() {
+  const { t } = useI18n();
+  const STEPS = t.how.steps.map((s, i) => ({ ...s, icon: ICONS[i % ICONS.length] }));
   return (
     <section id="kaip-veikia" className="relative mx-auto max-w-7xl px-6 py-24">
       <motion.div
@@ -41,8 +16,8 @@ export default function HowItWorks() {
         viewport={{ once: true, margin: '-80px' }}
         transition={{ duration: 0.6 }}
       >
-        <p className="font-dim text-xs uppercase tracking-[0.25em] text-sky-400">/ 01 — procesas</p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Keturi žingsniai iki žiniaraščio</h2>
+        <p className="font-dim text-xs uppercase tracking-[0.25em] text-sky-400">{t.how.kicker}</p>
+        <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{t.how.title}</h2>
       </motion.div>
 
       <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">

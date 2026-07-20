@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Lock, Crosshair } from 'lucide-react';
 import { Link } from 'react-router';
-
-const TECH = ['100 % naršyklėje', 'Veikia offline (PWA)', 'IFC · PDF · DXF', 'Excel eksportas', 'Savikontrolė', 'Be registracijos'];
+import { useI18n } from '@/i18n/I18nContext';
 
 export default function Footer() {
+  const { t } = useI18n();
   return (
     <footer className="relative">
       {/* Privatumas */}
@@ -27,7 +27,7 @@ export default function Footer() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-6 text-3xl font-bold tracking-tight sm:text-4xl"
           >
-            Jūsų brėžiniai <span className="text-emerald-300">niekur neiškeliauja.</span>
+            {t.foot.privA} <span className="text-emerald-300">{t.foot.privB}</span>
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -36,8 +36,7 @@ export default function Footer() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mx-auto mt-4 max-w-xl text-muted-foreground"
           >
-            IFC analizė, PDF matavimai, OCR, skaičiavimai — viskas atliekama jūsų naršyklėje.
-            Jokio serverio, jokios registracijos, jokių failų siuntimų.
+            {t.foot.privText}
           </motion.p>
         </div>
       </section>
@@ -53,7 +52,7 @@ export default function Footer() {
             transition={{ duration: 0.6 }}
             className="text-4xl font-extrabold tracking-tight sm:text-5xl"
           >
-            Pradėkite skaičiuoti <span className="glow-cyan text-sky-300">šiandien.</span>
+            {t.foot.ctaA} <span className="glow-cyan text-sky-300">{t.foot.ctaB}</span>
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -62,7 +61,7 @@ export default function Footer() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mx-auto mt-4 max-w-lg text-muted-foreground"
           >
-            Statinė programa — įkelkite į Hostinger per 3 min. arba naudokite iškart.
+            {t.foot.ctaText}
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -75,7 +74,7 @@ export default function Footer() {
               to="/app"
               className="group inline-flex items-center gap-2 rounded-xl bg-sky-500 px-8 py-4 text-base font-bold text-slate-950 shadow-[0_0_44px_-8px] shadow-sky-500/80 transition-all hover:bg-sky-400"
             >
-              Atidaryti QTO programą
+              {t.foot.ctaBtn}
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Link>
           </motion.div>
@@ -87,15 +86,15 @@ export default function Footer() {
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-6">
           <div className="flex items-center gap-2">
             <Crosshair className="h-4 w-4 text-sky-400" />
-            <span className="text-sm font-semibold">QTO — Statybos kiekių surinkimas</span>
+            <span className="text-sm font-semibold">{t.foot.tagline}</span>
           </div>
           <div className="font-dim flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-            {TECH.map((t) => <span key={t}>{t}</span>)}
+            {t.foot.tech.map((x) => <span key={x}>{x}</span>)}
           </div>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
-            <Link to="/privatumas" className="transition-colors hover:text-sky-300">Privatumo politika</Link>
-            <Link to="/salygos" className="transition-colors hover:text-sky-300">Naudojimo sąlygos</Link>
-            <Link to="/portal" className="transition-colors hover:text-sky-300">Portalas</Link>
+            <Link to="/privatumas" className="transition-colors hover:text-sky-300">{t.foot.privacy}</Link>
+            <Link to="/salygos" className="transition-colors hover:text-sky-300">{t.foot.terms}</Link>
+            <Link to="/portal" className="transition-colors hover:text-sky-300">{t.foot.portal}</Link>
           </div>
         </div>
       </div>

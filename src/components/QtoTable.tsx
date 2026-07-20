@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Crosshair, Pencil, Trash2 } from 'lucide-react';
-import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, type QtoItem, type SourceType } from '@/types/qto';
-import { fmt } from '@/lib/format';
+import { CATEGORY_INFO, CATEGORY_ORDER, ORIGIN_INFO, categoryLabel, originLabel, type QtoItem, type SourceType } from '@/types/qto';
+import { fmtQty, uLabel } from '@/lib/format';
+import { useUnitSystem } from '@/lib/units';
+import { useI18n } from '@/i18n/I18nContext';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -17,6 +19,8 @@ interface Props {
 }
 
 export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVerify, showSource = true, compact = false }: Props) {
+  const { t } = useI18n();
+  const units = useUnitSystem();
   const [catFilter, setCatFilter] = useState<string>('all');
   const [srcFilter, setSrcFilter] = useState<string>('all');
 
@@ -34,7 +38,7 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
-        Kolkas kiekių nėra – įkelkite IFC, PDF arba DXF failą atitinkamoje kortelėje.
+        {t.report.emptyYet}
       </p>
     );
   }
@@ -48,9 +52,9 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
             onChange={(e) => setCatFilter(e.target.value)}
             className="h-9 rounded-md border bg-background px-2 text-sm"
           >
-            <option value="all">Visos kategorijos</option>
+            <option value="all">{t.report.catAll}</option>
             {presentCats.map((c) => (
-              <option key={c} value={c}>{CATEGORY_INFO[c].lt}</option>
+              <option key={c} value={c}>{categoryLabel(c)}</option>
             ))}
           </select>
           {showSource && (
@@ -59,12 +63,12 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
               onChange={(e) => setSrcFilter(e.target.value)}
               className="h-9 rounded-md border bg-background px-2 text-sm"
             >
-              <option value="all">Visi šaltiniai</option>
+              <option value="all">{t.report.thSourceAll}</option>
               {sources.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
           <span className="ml-auto self-center text-xs text-muted-foreground">
-            Rodoma {filtered.length} iš {items.length}
+            {t.report.showing} {filtered.length} {t.report.ofWord} {items.length}
           </span>
         </div>
       )}
@@ -72,17 +76,17 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
         <table className="w-full text-sm">
           <thead className="bg-muted/60 sticky top-0">
             <tr className="text-left">
-              {showSource && <th className="px-3 py-2 font-medium">Šaltinis</th>}
-              {showSource && <th className="px-3 py-2 font-medium">Dalis</th>}
-              {showSource && <th className="px-3 py-2 font-medium">Kilmė</th>}
-              <th className="px-3 py-2 font-medium">Kategorija</th>
-              <th className="px-3 py-2 font-medium">Pavadinimas</th>
-              <th className="px-3 py-2 font-medium">Medžiaga</th>
-              <th className="px-3 py-2 font-medium text-right">Ilgis, m</th>
-              <th className="px-3 py-2 font-medium text-right">Aukštis, m</th>
-              <th className="px-3 py-2 font-medium text-right">Plotas, m²</th>
-              <th className="px-3 py-2 font-medium text-right">Tūris, m³</th>
-              <th className="px-3 py-2 font-medium text-right">Vnt.</th>
+              {showSource && <th className="px-3 py-2 font-medium">{t.report.thSource}</th>}
+              {showSource && <th className="px-3 py-2 font-medium">{t.report.thDisc}</th>}
+              {showSource && <th className="px-3 py-2 font-medium">{t.report.thOrigin}</th>}
+              <th className="px-3 py-2 font-medium">{t.report.thCat}</th>
+              <th className="px-3 py-2 font-medium">{t.report.thName}</th>
+              <th className="px-3 py-2 font-medium">{t.report.thMat}</th>
+              <th className="px-3 py-2 font-medium text-right">{t.report.thLen}, {uLabel('m', units)}</th>
+              <th className="px-3 py-2 font-medium text-right">{t.report.thH}, {uLabel('m', units)}</th>
+              <th className="px-3 py-2 font-medium text-right">{t.report.thArea}, {uLabel('m²', units)}</th>
+              <th className="px-3 py-2 font-medium text-right">{t.report.thVol}, {uLabel('m³', units)}</th>
+              <th className="px-3 py-2 font-medium text-right">{t.pdf.pcs}</th>
               {(onDelete || onEdit || onLocate || onToggleVerify) && <th className="px-2 py-2" />}
             </tr>
           </thead>
@@ -111,23 +115,23 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
                           ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
                           : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                       )}
-                      title={ORIGIN_INFO[i.origin].lt}
+                      title={originLabel(i.origin)}
                     >
-                      {ORIGIN_INFO[i.origin].short}
+                      {ORIGIN_INFO[i.origin]?.short ?? 'AI'}
                     </span>
                   </td>
                 )}
                 <td className="px-3 py-1.5 whitespace-nowrap">
                   <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
                     style={{ backgroundColor: CATEGORY_INFO[i.category].color }} />
-                  {CATEGORY_INFO[i.category].lt}
+                  {categoryLabel(i.category)}
                 </td>
                 <td className="px-3 py-1.5 max-w-[280px] truncate" title={i.name}>{i.name}</td>
                 <td className="px-3 py-1.5 max-w-[160px] truncate text-muted-foreground">{i.material ?? '—'}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.length_m)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.height_m)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.area_m2)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(i.volume_m3)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtQty(i.length_m, 'm', 2, units)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtQty(i.height_m, 'm', 2, units)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtQty(i.area_m2, 'm²', 2, units)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtQty(i.volume_m3, 'm³', 2, units)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{i.count}</td>
                 {(onDelete || onEdit || onLocate || onToggleVerify) && (
                   <td className="px-2 py-1.5">
@@ -136,7 +140,7 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
                         <button
                           onClick={() => onToggleVerify(i)}
                           className={i.verified ? 'text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}
-                          title={i.verified ? 'Patikrinta – nuimti žymą' : 'Pažymėti kaip patikrintą'}
+                          title={i.verified ? t.report.verifyOff : t.report.verifyOn}
                         >
                           <CheckCircle2 className="h-4 w-4" />
                         </button>
@@ -145,7 +149,7 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
                         <button
                           onClick={() => onLocate(i)}
                           className="text-muted-foreground hover:text-primary"
-                          title="Rodyti brėžinyje"
+                          title={t.report.locate}
                         >
                           <Crosshair className="h-4 w-4" />
                         </button>
@@ -154,7 +158,7 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
                         <button
                           onClick={() => onEdit(i)}
                           className="text-muted-foreground hover:text-primary"
-                          title="Redaguoti eilutę"
+                          title={t.report.edit}
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -163,7 +167,7 @@ export default function QtoTable({ items, onDelete, onEdit, onLocate, onToggleVe
                         <button
                           onClick={() => onDelete(i.id)}
                           className="text-muted-foreground hover:text-destructive"
-                          title="Pašalinti eilutę"
+                          title={t.report.delete}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

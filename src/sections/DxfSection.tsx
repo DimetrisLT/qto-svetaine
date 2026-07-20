@@ -4,6 +4,7 @@ import EmptyGuide from '@/components/EmptyGuide';
 import DxfViewer from '@/components/DxfViewer';
 import { parseDxfText, type DxfParseResult } from '@/lib/dxf/parseDxf';
 import type { QtoItem, SourceMeta } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface Props {
   fileName?: string;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function DxfSection({ fileName, items, onData }: Props) {
+  const { t } = useI18n();
   const [result, setResult] = useState<DxfParseResult | null>(null);
   const [name, setName] = useState(fileName);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +36,7 @@ export default function DxfSection({ fileName, items, onData }: Props) {
       });
     } catch (e) {
       console.error(e);
-      setError(
-        'Nepavyko perskaityti failo. Palaikomas tekstinis (ASCII) DXF. Jei turite DWG – konvertuokite nemokamu „ODA File Converter“ arba „LibreCAD“ (DWG → DXF).',
-      );
+      setError(t.dxf.error);
     } finally {
       setLoading(false);
     }
@@ -48,8 +48,8 @@ export default function DxfSection({ fileName, items, onData }: Props) {
         <>
           <FileDrop
             accept=".dxf"
-            label="Įkelkite DXF brėžinį"
-            hint="Programa perskaito sluoksnius, suskaičiuoja linijų ilgius, uždarų kontūrų plotus ir blokų kiekius. DWG failą konvertuokite į DXF (ODA File Converter / LibreCAD)."
+            label={t.dxf.drop}
+            hint={t.dxf.hint}
             fileName={name}
             onFile={handleFile}
             sample={{ url: '/pavyzdys-planas.dxf', fileName: 'pavyzdys-planas.dxf' }}
@@ -58,7 +58,7 @@ export default function DxfSection({ fileName, items, onData }: Props) {
           {error && <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">{error}</p>}
         </>
       )}
-      {loading && <p className="rounded-xl border p-6 text-sm">Analizuojamas DXF…</p>}
+      {loading && <p className="rounded-xl border p-6 text-sm">{t.dxf.analyzing}</p>}
       {result && (
         <>
           <div className="flex items-center gap-2 text-sm">
@@ -67,7 +67,7 @@ export default function DxfSection({ fileName, items, onData }: Props) {
               onClick={() => { setResult(null); setName(undefined); onData([], { source: 'DXF', parsed: false }); }}
               className="rounded-lg border px-2.5 py-1 text-xs hover:bg-muted"
             >
-              Kitas failas
+              {t.dxf.otherFile}
             </button>
           </div>
           <DxfViewer

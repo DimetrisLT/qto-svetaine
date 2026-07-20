@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '@/i18n/I18nContext';
+import { useUnitSystem } from '@/lib/units';
+import { fmtQty, uLabel } from '@/lib/format';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MousePointer2, X } from 'lucide-react';
-import { CATEGORY_INFO, CATEGORY_ORDER, type ElementCategory, type QtoItem } from '@/types/qto';
-import { fmt } from '@/lib/format';
+import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, type ElementCategory, type QtoItem } from '@/types/qto';
 import type { ViewerGeometry } from '@/lib/ifc/parseIfc';
 
 interface Props {
@@ -20,6 +22,8 @@ interface SceneCtx {
 
 /** 3D IFC modelio peržiūra: spalvos pagal tipus, paspaudimas → susieta žiniaraščio pozicija */
 export default function IfcViewer({ geometries, items = [] }: Props) {
+  const { t } = useI18n();
+  const units = useUnitSystem();
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneCtx | null>(null);
   const [visible, setVisible] = useState<Record<ElementCategory, boolean>>(() => {
@@ -201,7 +205,7 @@ export default function IfcViewer({ geometries, items = [] }: Props) {
       <div className="relative h-[420px] w-full overflow-hidden rounded-xl border bg-slate-900">
         <div ref={mountRef} className="h-full w-full" />
         <p className="absolute bottom-2 left-2 text-[11px] text-slate-400">
-          Vilkite – sukti · ratukas – artinti · <b>spauskite elementą</b> – kiekiai iš žiniaraščio
+          {t.ifc.dragHintA} <b>{t.ifc.clickElement}</b> {t.ifc.dragHintB}
         </p>
         {selectedId !== null && (
           <div className="absolute left-2 top-2 max-w-[320px] rounded-lg bg-background/95 p-3 text-xs shadow-lg backdrop-blur">
@@ -220,22 +224,22 @@ export default function IfcViewer({ geometries, items = [] }: Props) {
                     className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
                     style={{ backgroundColor: CATEGORY_INFO[selectedItem.category].color }}
                   />
-                  {CATEGORY_INFO[selectedItem.category].lt}
+                  {categoryLabel(selectedItem.category)}
                   {selectedItem.ifcClass ? ` · ${selectedItem.ifcClass}` : ''}
                 </p>
                 {selectedItem.material && <p>Medžiaga: {selectedItem.material}</p>}
                 <p className="font-medium text-foreground">
                   {[
-                    selectedItem.length_m !== undefined && `Ilgis ${fmt(selectedItem.length_m)} m`,
-                    selectedItem.height_m !== undefined && `aukštis ${fmt(selectedItem.height_m)} m`,
-                    selectedItem.area_m2 !== undefined && `plotas ${fmt(selectedItem.area_m2)} m²`,
-                    selectedItem.volume_m3 !== undefined && `tūris ${fmt(selectedItem.volume_m3)} m³`,
+                    selectedItem.length_m !== undefined && `${t.ifc.lenWord} ${fmtQty(selectedItem.length_m, 'm', 2, units)} ${uLabel('m', units)}`,
+                    selectedItem.height_m !== undefined && `${t.ifc.hWord} ${fmtQty(selectedItem.height_m, 'm', 2, units)} ${uLabel('m', units)}`,
+                    selectedItem.area_m2 !== undefined && `${t.ifc.areaWord} ${fmtQty(selectedItem.area_m2, 'm²', 2, units)} ${uLabel('m²', units)}`,
+                    selectedItem.volume_m3 !== undefined && `${t.ifc.volWord} ${fmtQty(selectedItem.volume_m3, 'm³', 2, units)} ${uLabel('m³', units)}`,
                   ].filter(Boolean).join(' · ') || `${selectedItem.count} ${selectedItem.unit}`}
                 </p>
                 {selectedItem.note && <p className="text-[11px]">{selectedItem.note}</p>}
               </div>
             ) : (
-              <p className="text-muted-foreground">Šis elementas neįtrauktas į žiniaraštį.</p>
+              <p className="text-muted-foreground">{t.ifc.notIncluded}</p>
             )}
           </div>
         )}
@@ -255,7 +259,7 @@ export default function IfcViewer({ geometries, items = [] }: Props) {
         ))}
         {selectedId === null && (
           <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-            <MousePointer2 className="h-3 w-3" /> spauskite ant elemento 3D vaizde
+            <MousePointer2 className="h-3 w-3" /> {t.ifc.clickOn3D}
           </span>
         )}
       </div>

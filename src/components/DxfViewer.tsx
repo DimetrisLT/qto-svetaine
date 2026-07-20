@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react';
+import { useI18n } from '@/i18n/I18nContext';
+import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
+import { L } from '@/i18n/store';
+import { fmtQty, uLabel } from '@/lib/format';
 import { Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import type { DxfParseResult, LayerStats } from '@/lib/dxf/parseDxf';
-import { fmt, round } from '@/lib/format';
+import { round } from '@/lib/format';
 
 interface Props {
   data: DxfParseResult;
@@ -26,6 +30,8 @@ interface LayerDraft {
 
 /** DXF sluoksnių analizė: geometrija + priskyrimas elementų kategorijoms */
 export default function DxfViewer({ data, items, onChange }: Props) {
+  const { t } = useI18n();
+  const units = useUnitSystem();
   const [unitIdx, setUnitIdx] = useState(0); // mm pagal nutylėjimą
   const [zoomK, setZoomK] = useState(1);
   const [drafts, setDrafts] = useState<Record<string, LayerDraft>>({});
@@ -72,8 +78,8 @@ export default function DxfViewer({ data, items, onChange }: Props) {
 
   const addLayer = (l: LayerStats) => {
     const d = draftOf(l);
-    const h = parseFloat(d.height.replace(',', '.'));
-    const t = parseFloat(d.thickness.replace(',', '.'));
+    const h = inputToMeters(parseFloat(d.height.replace(',', '.')), 'm', units);
+    const th = inputToMeters(parseFloat(d.thickness.replace(',', '.')), 'm', units);
     const lenM = round(l.lengthUnits * uf, 3);
     const areaM2 = round(l.closedAreaUnits2 * uf * uf, 3);
 
@@ -89,18 +95,18 @@ export default function DxfViewer({ data, items, onChange }: Props) {
       if (!Number.isNaN(h) && h > 0) {
         area_m2 = round(lenM * h, 3);
         unit = 'm²';
-        if (!Number.isNaN(t) && t > 0) { volume_m3 = round(area_m2 * t, 3); unit = 'm³'; }
+        if (!Number.isNaN(th) && th > 0) { volume_m3 = round(area_m2 * th, 3); unit = 'm³'; }
       } else {
-        notes.push('Nenurodytas aukštis – tik ilgis');
+        notes.push(t.dxf.noHeight);
       }
     } else if (d.category === 'slab' || d.category === 'roof' || d.category === 'footing' || d.category === 'room') {
       if (areaM2 > 0) {
         area_m2 = areaM2;
         unit = 'm²';
-        if (!Number.isNaN(t) && t > 0) { volume_m3 = round(areaM2 * t, 3); unit = 'm³'; }
+        if (!Number.isNaN(th) && th > 0) { volume_m3 = round(areaM2 * th, 3); unit = 'm³'; }
       } else {
         length_m = lenM;
-        notes.push('Uždarų kontūrų nerasta – paimtas linijų ilgis');
+        notes.push(t.dxf.noContours);
         unit = 'm';
       }
     } else {
@@ -112,7 +118,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
         notes.push(`Blokai: ${blokai}`);
       } else {
         count = 0;
-        notes.push('Sluoksnyje blokų nerasta – patikrinkite priskyrimą');
+        notes.push(t.dxf.noBlocks);
       }
     }
 
@@ -120,11 +126,11 @@ export default function DxfViewer({ data, items, onChange }: Props) {
       id: uid(),
       source: 'DXF',
       category: d.category,
-      name: d.name.includes('[sluoksnis:') ? d.name : `${d.name} [sluoksnis: ${l.name}]`,
+      name: d.name.includes(`[${L({ lt: 'sluoksnis', en: 'layer' })}:`) ? d.name : `${d.name} [${L({ lt: 'sluoksnis', en: 'layer' })}: ${l.name}]`,
       material: d.material || undefined,
       length_m,
       height_m: !Number.isNaN(h) && h > 0 && (d.category === 'wall' || d.category === 'beam') ? h : undefined,
-      thickness_m: !Number.isNaN(t) && t > 0 ? t : undefined,
+      thickness_m: !Number.isNaN(th) && th > 0 ? th : undefined,
       area_m2,
       volume_m3,
       count,
@@ -215,7 +221,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
                 <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: l.color }} />
                 <span className="font-semibold">{l.name}</span>
                 <span className="ml-auto text-muted-foreground">
-                  {empty ? 'tuščias / anotacijos' : `${fmt(l.lengthUnits * uf)} m · ${fmt(l.closedAreaUnits2 * uf * uf)} m² · ${l.insertCount} blok.`}
+                  {empty ? t.dxf.emptyLayer : `${fmtQty(l.lengthUnits * uf, 'm', 2, units)} ${uLabel('m', units)} · ${fmtQty(l.closedAreaUnits2 * uf * uf, 'm²', 2, units)} ${uLabel('m²', units)} · ${l.insertCount} blok.`}
                 </span>
               </div>
               {!empty && !used && (
@@ -234,7 +240,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
                     <input
                       value={d.material}
                       onChange={(e) => setDraft(l.name, { ...d, material: e.target.value })}
-                      placeholder="Medžiaga"
+                      placeholder={t.dxf.material}
                       className="h-8 w-full rounded-md border bg-background px-1.5"
                     />
                   </div>
@@ -242,9 +248,9 @@ export default function DxfViewer({ data, items, onChange }: Props) {
                     <input
                       value={d.height}
                       onChange={(e) => setDraft(l.name, { ...d, height: e.target.value })}
-                      placeholder="Aukštis m"
+                      placeholder={t.dxf.heightShort}
                       inputMode="decimal"
-                      title="Aukštis (sienoms/sijoms)"
+                      title={t.dxf.height}
                       className="h-8 w-full rounded-md border bg-background px-1.5"
                     />
                     <input
@@ -252,7 +258,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
                       onChange={(e) => setDraft(l.name, { ...d, thickness: e.target.value })}
                       placeholder="Storis m"
                       inputMode="decimal"
-                      title="Storis (tūriui)"
+                      title={t.dxf.thickness}
                       className="h-8 w-full rounded-md border bg-background px-1.5"
                     />
                     <button
@@ -266,7 +272,7 @@ export default function DxfViewer({ data, items, onChange }: Props) {
               )}
               {used && (
                 <div className="flex items-center justify-between">
-                  <span className="text-emerald-600">✓ Įtraukta į kiekius</span>
+                  <span className="text-emerald-600">{t.dxf.added}</span>
                   <button onClick={() => removeByLayer(l.name)} className="flex items-center gap-1 text-muted-foreground hover:text-destructive">
                     <Trash2 className="h-3.5 w-3.5" /> Šalinti
                   </button>

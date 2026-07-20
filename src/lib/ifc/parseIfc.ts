@@ -1,5 +1,6 @@
 // IFC modelio analizė: kiekių (Qto) išgavimas, medžiagos, geometrija, savikontrolės duomenys
 import * as WebIFC from 'web-ifc';
+import { L } from '@/i18n/store';
 import { getIfcApi } from './ifcService';
 import { meshStats, emptyStats, mergeStats, transformPoint, type MeshStats } from './geometry';
 import { CATEGORY_INFO, uid, type ElementCategory, type QtoItem } from '@/types/qto';
@@ -199,16 +200,16 @@ export async function parseIfcFile(
   onProgress?: (pct: number, label: string) => void,
 ): Promise<IfcParseResult> {
   const api = await getIfcApi();
-  onProgress?.(5, 'Atidaromas IFC modelis…');
+  onProgress?.(5, L({ lt: 'Atidaromas IFC modelis…', en: 'Opening IFC model…' }));
   const modelID = api.OpenModel(new Uint8Array(buffer));
   const { uf, ufArea, ufVol, label: unitLabel } = getUnitFactors(api, modelID);
 
-  onProgress?.(10, 'Skaitomos savybės ir medžiagos…');
+  onProgress?.(10, L({ lt: 'Skaitomos savybės ir medžiagos…', en: 'Reading properties and materials…' }));
   const relQto = collectRels(api, modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
   const relMat = collectRels(api, modelID, WebIFC.IFCRELASSOCIATESMATERIAL);
 
   // Geometrija: perleidžiame visus reikalingų tipų tinklelius
-  onProgress?.(20, 'Skaičiuojama geometrija (gali užtrukti)…');
+  onProgress?.(20, L({ lt: 'Skaičiuojama geometrija (gali užtrukti)…', en: 'Computing geometry (may take a while)…' }));
   const geoById = new Map<number, MeshStats>();
   const viewerGeos: ViewerGeometry[] = [];
   const catById = new Map<number, ElementCategory>();
@@ -261,10 +262,10 @@ export async function parseIfcFile(
         }
       } catch { /* praleidžiame defektinę geometriją */ }
     }
-    if (streamed % 200 === 0) onProgress?.(20 + Math.min(50, streamed / 40), 'Skaičiuojama geometrija…');
+    if (streamed % 200 === 0) onProgress?.(20 + Math.min(50, streamed / 40), L({ lt: 'Skaičiuojama geometrija…', en: 'Computing geometry…' }));
   });
 
-  onProgress?.(75, 'Formuojami kiekiai…');
+  onProgress?.(75, L({ lt: 'Formuojami kiekiai…', en: 'Building quantities…' }));
   const items: QtoItem[] = [];
   let withQ = 0;
   const noQClasses = new Set<string>();
@@ -307,8 +308,8 @@ export async function parseIfcFile(
 
       const notes: string[] = [];
       if (category === 'wall' && q.areaName === 'netsidearea') notes.push('Angos atimtos (NetSideArea)');
-      if (!hasQ && geo) notes.push('Kiekiai iš geometrijos (angų atėmimas nežinomas)');
-      if (!hasQ && !geo) notes.push('Nėra nei Qto, nei geometrijos – tik vnt.');
+      if (!hasQ && geo) notes.push(L({ lt: 'Kiekiai iš geometrijos (angų atėmimas nežinomas)', en: 'Quantities from geometry (opening deduction unknown)' }));
+      if (!hasQ && !geo) notes.push(L({ lt: 'Nėra nei Qto, nei geometrijos – tik vnt.', en: 'No Qto or geometry – count only' }));
 
       const unit = pickUnit(category, volume_m3 !== undefined || geoVol !== undefined, area_m2 !== undefined || geoArea !== undefined);
 
@@ -337,7 +338,7 @@ export async function parseIfcFile(
   }
 
   try { api.CloseModel(modelID); } catch { /* modelis jau uždarytas */ }
-  onProgress?.(100, 'Baigta');
+  onProgress?.(100, L({ lt: 'Baigta', en: 'Done' }));
 
   return {
     items,

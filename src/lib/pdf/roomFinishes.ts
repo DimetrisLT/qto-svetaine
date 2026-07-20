@@ -3,6 +3,7 @@
 import { pointInPolygon } from '@/lib/geometry2d';
 import { round } from '@/lib/format';
 import { uid, type QtoItem } from '@/types/qto';
+import { L } from '@/i18n/store';
 
 export interface RoomFinishOptions {
   /** Patalpos aukštis, m */
@@ -76,7 +77,7 @@ export function buildRoomFinishItems(
   const perim = room.length_m ?? 0;
   if (area <= 0 || perim <= 0 || opts.heightM <= 0) return [];
 
-  const name = room.name || 'Patalpa';
+  const name = room.name || L({ lt: 'Patalpa', en: 'Room' });
   const base = {
     source: room.source,
     pdfKind: 'area' as const,
@@ -89,14 +90,14 @@ export function buildRoomFinishItems(
   };
 
   let wallArea = round(perim * opts.heightM, 3);
-  let wallNote = `Perimetras ${round(perim, 2)} m × aukštis ${opts.heightM} m`;
+  let wallNote = L({ lt: `Perimetras ${round(perim, 2)} m × aukštis ${opts.heightM} m`, en: `Perimeter ${round(perim, 2)} m × height ${opts.heightM} m` });
   if (opts.deductOpenings) {
     const op = openingsInRoom(room, allItems, opts.openingThresholdM2);
     if (op.areaM2 > 0) {
       wallArea = round(Math.max(0, wallArea - op.areaM2), 3);
-      wallNote += ` − angos ${op.areaM2} m² (${op.count} vnt.)`;
+      wallNote += L({ lt: ` − angos ${op.areaM2} m² (${op.count} vnt.)`, en: ` − openings ${op.areaM2} m² (${op.count} pcs)` });
     }
-    if (op.skipped > 0) wallNote += `; praleista ${op.skipped} angų <${opts.openingThresholdM2} m²`;
+    if (op.skipped > 0) wallNote += L({ lt: `; praleista ${op.skipped} angų <${opts.openingThresholdM2} m²`, en: `; skipped ${op.skipped} openings <${opts.openingThresholdM2} m²` });
   }
 
   const mk = (category: QtoItem['category'], suffix: string, areaM2: number, note?: string): QtoItem => ({
@@ -109,9 +110,10 @@ export function buildRoomFinishItems(
     note,
   });
 
+  const areaNote = L({ lt: `Patalpos plotas ${round(area, 3)} m²`, en: `Room area ${round(area, 3)} m²` });
   return [
-    mk('fin_floor', 'grindų apdaila', round(area, 3), `Patalpos plotas ${round(area, 3)} m²`),
-    mk('fin_ceiling', 'lubų apdaila', round(area, 3), `Patalpos plotas ${round(area, 3)} m²`),
-    mk('fin_wall', 'sienų apdaila', wallArea, wallNote),
+    mk('fin_floor', L({ lt: 'grindų apdaila', en: 'floor finish' }), round(area, 3), areaNote),
+    mk('fin_ceiling', L({ lt: 'lubų apdaila', en: 'ceiling finish' }), round(area, 3), areaNote),
+    mk('fin_wall', L({ lt: 'sienų apdaila', en: 'wall finish' }), wallArea, wallNote),
   ];
 }

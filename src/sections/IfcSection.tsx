@@ -4,6 +4,7 @@ import EmptyGuide from '@/components/EmptyGuide';
 import IfcViewer from '@/components/IfcViewer';
 import { parseIfcFile, type IfcParseResult } from '@/lib/ifc/parseIfc';
 import type { QtoItem, SourceMeta } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface Props {
   fileName?: string;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function IfcSection({ fileName, onData }: Props) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
@@ -40,7 +42,7 @@ export default function IfcSection({ fileName, onData }: Props) {
       });
     } catch (e) {
       console.error(e);
-      setError('Nepavyko perskaityti IFC failo. Patikrinkite, ar tai galiojantis IFC (STEP) failas, ir bandykite dar kartą.');
+      setError(t.ifc.error);
     } finally {
       setLoading(false);
     }
@@ -52,8 +54,8 @@ export default function IfcSection({ fileName, onData }: Props) {
         <>
           <FileDrop
             accept=".ifc,.ifczip"
-            label="Įkelkite IFC modelį"
-            hint="Kiekiai (ilgis, plotas, tūris), medžiagos ir 3D geometrija išgaunami automatiškai iš IFC klasių (IfcWall, IfcSlab, IfcColumn, IfcBeam…)."
+            label={t.ifc.drop}
+            hint={t.ifc.hint}
             fileName={name}
             onFile={handleFile}
             sample={{ url: '/pavyzdys-modelis.ifc', fileName: 'pavyzdys-modelis.ifc' }}
@@ -64,11 +66,11 @@ export default function IfcSection({ fileName, onData }: Props) {
 
       {loading && (
         <div className="rounded-xl border p-6 space-y-3">
-          <p className="text-sm font-medium">{progressLabel || 'Analizuojama…'}</p>
+          <p className="text-sm font-medium">{progressLabel || t.ifc.analyzing}</p>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
           </div>
-          <p className="text-xs text-muted-foreground">Dideliems modeliams tai gali užtrukti iki kelių minučių.</p>
+          <p className="text-xs text-muted-foreground">{t.ifc.bigNote}</p>
         </div>
       )}
 
@@ -77,20 +79,20 @@ export default function IfcSection({ fileName, onData }: Props) {
       {result && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Elementų modelyje" value={String(result.stats.totalElements)} />
-            <Stat label="Su Qto savybėmis" value={`${result.stats.withQuantities}`} />
-            <Stat label="Be Qto (iš geometrijos)" value={`${result.stats.withoutQuantities}`} warn={result.stats.withoutQuantities > 0} />
-            <Stat label="Vienetai" value={result.stats.unitLabel} />
+            <Stat label={t.ifc.elements} value={String(result.stats.totalElements)} />
+            <Stat label={t.ifc.qtoProps} value={`${result.stats.withQuantities}`} />
+            <Stat label={t.ifc.noQto} value={`${result.stats.withoutQuantities}`} warn={result.stats.withoutQuantities > 0} />
+            <Stat label={t.ifc.units} value={result.stats.unitLabel} />
           </div>
           {result.geometries.length > 0
             ? <IfcViewer geometries={result.geometries} items={result.items} />
-            : <p className="rounded-lg border p-4 text-sm text-muted-foreground">Modelyje nerasta 3D geometrijos šioms klasėms – rodomos tik lentelės.</p>}
+            : <p className="rounded-lg border p-4 text-sm text-muted-foreground">{t.ifc.noGeom}</p>}
           <div className="flex gap-2">
             <button
               onClick={() => { setResult(null); setName(undefined); onData([], { source: 'IFC', parsed: false }); }}
               className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted"
             >
-              Įkelti kitą IFC
+              {t.ifc.other}
             </button>
           </div>
         </>

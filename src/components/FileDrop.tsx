@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { UploadCloud, FileCheck2, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface Props {
   accept: string;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function FileDrop({ accept, label, hint, fileName, disabled, onFile, sample }: Props) {
+  const { t } = useI18n();
   const [over, setOver] = useState(false);
   const [sampleLoading, setSampleLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,7 +65,7 @@ export default function FileDrop({ accept, label, hint, fileName, disabled, onFi
           <>
             <FileCheck2 className="h-10 w-10 text-emerald-500" />
             <p className="font-medium">{fileName}</p>
-            <p className="text-xs text-muted-foreground">Spauskite, kad pasirinktumėte kitą failą</p>
+            <p className="text-xs text-muted-foreground">{t.drop.changeFile}</p>
           </>
         ) : (
           <>
@@ -80,7 +82,7 @@ export default function FileDrop({ accept, label, hint, fileName, disabled, onFi
           className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
         >
           {sampleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Išbandyti su pavyzdžiu – be savo failo
+          {sampleLoading ? t.drop.sampleLoading : t.drop.sample}
         </button>
       )}
     </div>

@@ -1,23 +1,32 @@
 // Darbų kiekių žiniaraštis: kiekiai sugrupuojami pagal statybos darbų grupes (sąmatoms)
-import { CATEGORY_INFO, CATEGORY_ORDER, type ElementCategory, type QtoItem } from '@/types/qto';
+import { CATEGORY_ORDER, categoryLabel, type ElementCategory, type QtoItem } from '@/types/qto';
 import { round } from '@/lib/format';
+import { L } from '@/i18n/store';
 
 export interface WorkGroup {
   code: string;
   title: string;
 }
 
-export const WORK_GROUPS: WorkGroup[] = [
-  { code: '01', title: 'Žemės darbai' },
-  { code: '02', title: 'Pamatai' },
-  { code: '03', title: 'Sienų konstrukcijos' },
-  { code: '04', title: 'Gelžbetoninės konstrukcijos (perdangos, sijos, kolonos, laiptai)' },
-  { code: '05', title: 'Stogo konstrukcija ir danga' },
-  { code: '06', title: 'Langai' },
-  { code: '07', title: 'Durys' },
-  { code: '08', title: 'Apdailos darbai' },
-  { code: '09', title: 'Kiti darbai' },
+const WORK_GROUP_DEFS: Array<{ code: string; lt: string; en: string }> = [
+  { code: '01', lt: 'Žemės darbai', en: 'Earthwork' },
+  { code: '02', lt: 'Pamatai', en: 'Foundations' },
+  { code: '03', lt: 'Sienų konstrukcijos', en: 'Wall assemblies' },
+  { code: '04', lt: 'Gelžbetoninės konstrukcijos (perdangos, sijos, kolonos, laiptai)', en: 'Concrete structures (slabs, beams, columns, stairs)' },
+  { code: '05', lt: 'Stogo konstrukcija ir danga', en: 'Roof structure and covering' },
+  { code: '06', lt: 'Langai', en: 'Windows' },
+  { code: '07', lt: 'Durys', en: 'Doors' },
+  { code: '08', lt: 'Apdailos darbai', en: 'Finishes' },
+  { code: '09', lt: 'Kiti darbai', en: 'Other works' },
 ];
+
+/** Darbų grupių pavadinimai pagal aktyvią kalbą (kviečiama darbo metu, ne import'o) */
+export function workGroups(): WorkGroup[] {
+  return WORK_GROUP_DEFS.map((g) => ({ code: g.code, title: L({ lt: g.lt, en: g.en }) }));
+}
+
+/** @deprecated naudokite workGroups() – šis sąrašas užšaldytas import'o metu */
+export const WORK_GROUPS: WorkGroup[] = workGroups();
 
 const GROUP_BY_CATEGORY: Record<ElementCategory, string> = {
   footing: '02',
@@ -75,7 +84,7 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
       row = {
         groupCode,
         category: item.category,
-        name: `${CATEGORY_INFO[item.category]?.lt ?? 'Kita'}${mat}`,
+        name: `${categoryLabel(item.category)}${mat}`,
         unit: item.unit,
         qty: 0,
         origin: item.origin,
@@ -93,10 +102,10 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
   const rows = [...acc.values()].filter((r) => r.qty > 0 || r.detailCount > 0);
   const catIdx = (c: ElementCategory) => CATEGORY_ORDER.indexOf(c);
   const groups: ZiniarastisGroup[] = [];
-  for (const g of WORK_GROUPS) {
+  for (const g of workGroups()) {
     const grows = rows
       .filter((r) => r.groupCode === g.code)
-      .sort((a, b) => catIdx(a.category) - catIdx(b.category) || a.name.localeCompare(b.name, 'lt'));
+      .sort((a, b) => catIdx(a.category) - catIdx(b.category) || a.name.localeCompare(b.name, L({ lt: 'lt', en: 'en' })));
     if (grows.length) groups.push({ group: g, rows: grows });
   }
   return groups;

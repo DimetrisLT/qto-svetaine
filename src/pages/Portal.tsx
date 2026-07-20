@@ -5,9 +5,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import { LOGIN_PATH } from '@/const';
 import ThemeToggle from '@/components/ThemeToggle';
+import { LangToggle, useI18n } from '@/i18n/I18nContext';
 
 /** Vartotojo portalas: debesyje išsaugoti projektai */
 export default function Portal() {
+  const { t, locale } = useI18n();
   const { user, isLoading, logout } = useAuth({ redirectOnUnauthenticated: true, redirectPath: LOGIN_PATH });
   const navigate = useNavigate();
   const utils = trpc.useUtils();
@@ -89,42 +91,43 @@ export default function Portal() {
             <Building2 className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-lg font-bold leading-tight">Mano projektai</h1>
-            <p className="text-xs text-muted-foreground">{user.name ?? user.email ?? 'Vartotojas'}</p>
+            <h1 className="text-lg font-bold leading-tight">{t.portal.title}</h1>
+            <p className="text-xs text-muted-foreground">{user.name ?? user.email ?? t.portal.user}</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <LangToggle />
             <ThemeToggle />
             <Link
               to="/app"
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
             >
-              <Plus className="h-3.5 w-3.5" /> Naujas projektas
+              <Plus className="h-3.5 w-3.5" /> {t.portal.newProject}
             </Link>
             <button
               onClick={logout}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
             >
-              <LogOut className="h-3.5 w-3.5" /> Atsijungti
+              <LogOut className="h-3.5 w-3.5" /> {t.portal.logout}
             </button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6">
-        {projects.isLoading && <p className="text-sm text-muted-foreground">Kraunami projektai…</p>}
+        {projects.isLoading && <p className="text-sm text-muted-foreground">{t.portal.loading}</p>}
         {projects.error && (
           <p className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            Nepavyko užkrauti projektų: {projects.error.message}
+            {t.portal.loadError} {projects.error.message}
           </p>
         )}
         {projects.data && projects.data.length === 0 && (
           <div className="rounded-xl border border-dashed px-6 py-12 text-center">
-            <p className="mb-2 text-sm font-medium">Dar neturite išsaugotų projektų</p>
+            <p className="mb-2 text-sm font-medium">{t.portal.empty}</p>
             <p className="mb-4 text-xs text-muted-foreground">
-              Atidarykite programą, atlikite matavimus ir spauskite „Įrašyti į paskyrą“ – projektas atsiras čia.
+              {t.portal.emptyText}
             </p>
             <Link to="/app" className="text-sm font-semibold text-primary hover:underline">
-              Atidaryti QTO programą →
+              {t.portal.openApp}
             </Link>
           </div>
         )}
@@ -134,18 +137,18 @@ export default function Portal() {
               <div className="mb-1 flex items-start justify-between gap-2">
                 <h2 className="font-semibold leading-tight">{p.name}</h2>
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {p.itemCount} poz.
+                  {p.itemCount} {t.portal.poz}
                 </span>
               </div>
               <p className="mb-3 text-xs text-muted-foreground">
-                Atnaujinta {new Date(p.updatedAt).toLocaleString('lt-LT', { dateStyle: 'short', timeStyle: 'short' })}
+                {t.portal.updated} {new Date(p.updatedAt).toLocaleString(locale === 'lt' ? 'lt-LT' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => navigate(`/app?project=${p.id}`)}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  <FolderOpen className="h-3.5 w-3.5" /> Atidaryti
+                  <FolderOpen className="h-3.5 w-3.5" /> {t.portal.open}
                 </button>
                 {shareUrls[p.id] ? (
                   <>
@@ -155,13 +158,13 @@ export default function Portal() {
                       rel="noreferrer"
                       className="flex items-center gap-1.5 rounded-lg border border-primary/50 px-3 py-1.5 text-xs font-medium text-primary"
                     >
-                      <Link2 className="h-3.5 w-3.5" /> {copiedId === p.id ? '✓ Nukopijuota' : 'Nuoroda'}
+                      <Link2 className="h-3.5 w-3.5" /> {copiedId === p.id ? t.portal.copied : t.portal.link}
                     </a>
                     <button
                       onClick={() => handleRevoke(p.id)}
                       className="rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive"
                     >
-                      Atšaukti
+                      {t.portal.cancel}
                     </button>
                   </>
                 ) : (
@@ -170,14 +173,14 @@ export default function Portal() {
                     disabled={shareCreate.isPending}
                     className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
                   >
-                    <Link2 className="h-3.5 w-3.5" /> Dalintis peržiūra
+                    <Link2 className="h-3.5 w-3.5" /> {t.portal.share}
                   </button>
                 )}
                 <button
                   onClick={() => setHistoryFor(p.id)}
                   className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
-                  <History className="h-3.5 w-3.5" /> Istorija
+                  <History className="h-3.5 w-3.5" /> {t.portal.history}
                 </button>
                 {confirmId === p.id ? (
                   <>
@@ -185,10 +188,10 @@ export default function Portal() {
                       onClick={() => { remove.mutate({ id: p.id }); setConfirmId(null); }}
                       className="rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground"
                     >
-                      Patvirtinti šalinimą
+                      {t.portal.confirmRemove}
                     </button>
                     <button onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-1.5 text-xs">
-                      Atšaukti
+                      {t.portal.cancel}
                     </button>
                   </>
                 ) : (
@@ -196,7 +199,7 @@ export default function Portal() {
                     onClick={() => setConfirmId(p.id)}
                     className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-destructive"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Šalinti
+                    <Trash2 className="h-3.5 w-3.5" /> {t.portal.remove}
                   </button>
                 )}
               </div>
@@ -209,23 +212,23 @@ export default function Portal() {
       {historyFor !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setHistoryFor(null)}>
           <div className="w-full max-w-md rounded-xl bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-1 font-semibold">Versijų istorija</h2>
+            <h2 className="mb-1 font-semibold">{t.portal.versions}</h2>
             <p className="mb-4 text-xs text-muted-foreground">
-              Momentinė kopija sukuriama kaskart įrašant projektą (laikomos paskutinės 20).
+              {t.portal.versionsNote}
             </p>
-            {versions.isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Kraunama…</p>}
+            {versions.isLoading && <p className="py-4 text-center text-sm text-muted-foreground">{t.app.loading}</p>}
             {versions.data?.length === 0 && (
-              <p className="py-4 text-center text-sm text-muted-foreground">Versijų dar nėra.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">{t.portal.versionsEmpty}</p>
             )}
             <div className="max-h-80 space-y-1.5 overflow-auto">
               {versions.data?.map((v, i) => (
                 <div key={v.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
-                      {new Date(v.createdAt).toLocaleString('lt-LT', { dateStyle: 'short', timeStyle: 'short' })}
-                      {i === 0 && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">dabartinė</span>}
+                      {new Date(v.createdAt).toLocaleString(locale === 'lt' ? 'lt-LT' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}
+                      {i === 0 && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{t.portal.current}</span>}
                     </p>
-                    <p className="text-xs text-muted-foreground">{v.itemCount} pozicijos</p>
+                    <p className="text-xs text-muted-foreground">{v.itemCount} {t.portal.pozicijos}</p>
                   </div>
                   {i > 0 && (
                     <button
@@ -233,7 +236,7 @@ export default function Portal() {
                       disabled={restore.isPending}
                       className="rounded-lg border px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
                     >
-                      Atkurti
+                      {t.portal.restore}
                     </button>
                   )}
                 </div>
@@ -243,7 +246,7 @@ export default function Portal() {
               onClick={() => setHistoryFor(null)}
               className="mt-4 w-full rounded-lg border px-3 py-2 text-xs font-medium hover:bg-muted"
             >
-              Uždaryti
+              {t.portal.close}
             </button>
           </div>
         </div>
@@ -251,26 +254,26 @@ export default function Portal() {
 
       <footer className="mx-auto mt-10 max-w-5xl border-t px-4 pt-4 pb-8">
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-          <Link to="/privatumas" className="hover:text-primary">Privatumo politika</Link>
-          <Link to="/salygos" className="hover:text-primary">Naudojimo sąlygos</Link>
+          <Link to="/privatumas" className="hover:text-primary">{t.portal.privacy}</Link>
+          <Link to="/salygos" className="hover:text-primary">{t.portal.terms}</Link>
           {confirmDelete ? (
             <span className="ml-auto flex items-center gap-2">
-              <span className="text-destructive">Ištrinti paskyrą ir visus projektus negrįžtamai?</span>
+              <span className="text-destructive">{t.portal.deleteAsk}</span>
               <button
                 onClick={() => deleteMe.mutate()}
                 disabled={deleteMe.isPending}
                 className="rounded-lg bg-destructive px-3 py-1.5 font-semibold text-destructive-foreground disabled:opacity-50"
               >
-                Taip, ištrinti viską
+                {t.portal.deleteYes}
               </button>
-              <button onClick={() => setConfirmDelete(false)} className="rounded-lg border px-3 py-1.5">Atšaukti</button>
+              <button onClick={() => setConfirmDelete(false)} className="rounded-lg border px-3 py-1.5">{t.portal.cancel}</button>
             </span>
           ) : (
             <button
               onClick={() => setConfirmDelete(true)}
               className="ml-auto text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
             >
-              Ištrinti paskyrą
+              {t.portal.deleteAccount}
             </button>
           )}
         </div>

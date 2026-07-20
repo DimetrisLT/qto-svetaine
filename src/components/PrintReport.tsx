@@ -7,6 +7,7 @@ import { runSelfChecks } from '@/lib/selfCheck';
 import { summarizeCarbon } from '@/lib/carbon';
 import { fmt } from '@/lib/format';
 import type { QtoItem, SourceMeta } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface Props {
   items: QtoItem[];
@@ -17,6 +18,7 @@ interface Props {
 
 /** Spausdinimui optimizuota kiekių ataskaita – naršyklių „Save as PDF“ */
 export default function PrintReport({ items, metas, projectName, onClose }: Props) {
+  const { t, locale } = useI18n();
   const checks = runSelfChecks(items, metas);
   const warns = checks.filter((c) => c.status === 'warn').length;
   const verified = items.filter((i) => i.verified).length;
@@ -31,13 +33,13 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
           onClick={() => window.print()}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
-          <Printer className="h-4 w-4" /> Spausdinti / įrašyti PDF
+          <Printer className="h-4 w-4" /> {t.report.printBtn}
         </button>
         <p className="text-xs text-muted-foreground">
-          Atsidariusiame lange pasirinkite „Save as PDF“ / „Įrašyti kaip PDF“.
+          {t.report.printHint}
         </p>
         <button onClick={onClose} className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm hover:bg-muted">
-          <X className="h-4 w-4" /> Uždaryti
+          <X className="h-4 w-4" /> {t.report.closeBtn}
         </button>
       </div>
 
@@ -51,33 +53,33 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
             </div>
             <div>
               <p className="text-sm font-bold leading-tight">QTO</p>
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Kiekių apskaičiavimo ataskaita</p>
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">{t.report.printTitle}</p>
             </div>
           </div>
-          <h1 className="mt-1 text-2xl font-bold">{projectName || 'Statybinio projekto kiekiai'}</h1>
+          <h1 className="mt-1 text-2xl font-bold">{projectName || t.report.printSubtitle}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Suformuota {now.toLocaleString('lt-LT', { dateStyle: 'long', timeStyle: 'short' })} ·{' '}
-            {items.length} pozicijos · patikrinta {verified}/{items.length} · {warns > 0 ? `${warns} įspėjimai savikontrolėje` : 'savikontrolė be įspėjimų'}
+            {t.report.printMetaA} {now.toLocaleString(locale === 'lt' ? 'lt-LT' : 'en-US', { dateStyle: 'long', timeStyle: 'short' })} ·{' '}
+            {items.length} {t.report.printMetaB} {verified}/{items.length} · {warns > 0 ? `${warns} ${t.report.printWarnIn}` : t.report.scNoWarn}
           </p>
         </header>
 
         <section className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold">Suvestinė pagal kategorijas</h2>
+          <h2 className="mb-2 text-lg font-semibold">{t.report.catSummary}</h2>
           <SummaryCards items={items} />
         </section>
 
         {/* Anglies pėdsakas – tik kai bent vienai pozicijai pavyko priskirti koeficientą */}
         {carbon.ratedCount > 0 && (
           <section className="mb-6">
-            <h2 className="mb-2 text-lg font-semibold">Anglies pėdsakas (orientacinis)</h2>
+            <h2 className="mb-2 text-lg font-semibold">{t.report.carbonTitle}</h2>
             <CarbonCard items={items} />
           </section>
         )}
 
         <section className="mb-6 print:break-inside-auto">
-          <h2 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h2>
+          <h2 className="mb-1 text-lg font-semibold">{t.report.zinTitle}</h2>
           <p className="mb-2 text-xs text-muted-foreground">
-            Pozicijos sugrupuotos pagal darbų grupes – pagrindas detaliosioms sąmatoms.
+            {t.report.zinNote}
           </p>
           <ZiniarastisTable items={items} />
         </section>
@@ -88,14 +90,14 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
         </section>
 
         <section className="mb-6">
-          <h2 className="mb-2 text-lg font-semibold">Šaltiniai</h2>
+          <h2 className="mb-2 text-lg font-semibold">{t.report.sources}</h2>
           <ul className="space-y-1 text-sm">
             {metas.filter((m) => m.parsed).map((m, i) => (
               <li key={i} className="flex justify-between gap-4 border-b border-dashed pb-1">
                 <span>{m.fileName} <span className="text-muted-foreground">({m.source})</span></span>
                 <span className="text-muted-foreground">
-                  {m.totalElements !== undefined ? `${m.totalElements} elementų` : ''}
-                  {m.pdfFiles ? `${m.pdfFiles.length} failai` : ''}
+                  {m.totalElements !== undefined ? `${m.totalElements} ${t.report.elementsN}` : ''}
+                  {m.pdfFiles ? `${m.pdfFiles.length} ${t.report.filesN}` : ''}
                 </span>
               </li>
             ))}
@@ -104,8 +106,7 @@ export default function PrintReport({ items, metas, projectName, onClose }: Prop
 
         <footer className="mt-8 border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
           <p>
-            Kiekiai yra orientaciniai, apskaičiuoti pagal pateiktus projektinius duomenis (IFC modelius, PDF/DXF brėžinius).
-            Prieš naudojimą sąmatose ir užsakymuose juos turi patikrinti sąmatininkas. Sugeneruota su QTO programa
+            {t.report.disclaimer}
             {projectName ? ` · ${fmt(items.length, 0)} pozicijos` : ''}.
           </p>
         </footer>

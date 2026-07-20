@@ -3,13 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router';
 import { ArrowRight, FileText, Boxes, ScanText, Crosshair, Menu, X } from 'lucide-react';
 import BlueprintPlan from '@/landing/components/BlueprintPlan';
-
-const STATS = [
-  { value: '36', unit: 'vnt.', label: 'polių aptikta žiniaraštyje' },
-  { value: '5,58', unit: 'm³', label: 'betono C25/30 sutikrinta' },
-  { value: '<2', unit: '%', label: 'mastelio nukrypimo kontrolė' },
-  { value: '3', unit: 'formatai', label: 'IFC · PDF · DXF' },
-];
+import { LangToggle, useI18n } from '@/i18n/I18nContext';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
@@ -19,15 +13,16 @@ const fadeUp = {
   }),
 };
 
-const NAV_LINKS = [
-  { href: '#kaip-veikia', label: 'Kaip veikia' },
-  { href: '#funkcijos', label: 'Funkcijos' },
-  { href: '#savikontrole', label: 'Savikontrolė' },
-  { href: '#ziniarastis', label: 'Žiniaraštis' },
-];
-
 export default function Hero() {
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
+  const STATS = t.hero.stats;
+  const NAV_LINKS = [
+    { href: '#kaip-veikia', label: t.nav.how },
+    { href: '#funkcijos', label: t.nav.features },
+    { href: '#savikontrole', label: t.nav.selfcheck },
+    { href: '#ziniarastis', label: t.nav.ziniarastis },
+  ];
   return (
     <header className="blueprint-grid blueprint-fade relative">
       {/* Navigacija */}
@@ -37,7 +32,7 @@ export default function Hero() {
             <Crosshair className="h-5 w-5 text-sky-400" />
           </div>
           <span className="text-lg font-bold tracking-tight">QTO</span>
-          <span className="font-dim hidden text-xs text-muted-foreground sm:inline">v2 · kiekių surinkimas</span>
+          <span className="font-dim hidden text-xs text-muted-foreground sm:inline">{t.hero.tagV2}</span>
         </div>
         <div className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
           {NAV_LINKS.map((l) => (
@@ -45,22 +40,29 @@ export default function Hero() {
           ))}
         </div>
         <div className="flex items-center gap-2.5">
+          <LangToggle />
+          <Link
+            to="/tutorial"
+            className="hidden whitespace-nowrap rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300 sm:block"
+          >
+            {t.nav.tutorial}
+          </Link>
           <Link
             to="/portal"
             className="hidden whitespace-nowrap rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300 sm:block"
           >
-            Portalas
+            {t.nav.portal}
           </Link>
           <Link
             to="/app"
             className="whitespace-nowrap rounded-lg bg-sky-500 px-3.5 py-2 text-xs font-semibold text-slate-950 shadow-[0_0_24px_-4px] shadow-sky-500/60 transition-all hover:bg-sky-400 hover:shadow-sky-400/60 sm:px-4 sm:text-sm"
           >
-            Atidaryti programą
+            {t.nav.cta}
           </Link>
           {/* Mobilioji navigacija */}
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            aria-label="Meniu"
+            aria-label={t.nav.menu}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-sky-400/50 hover:text-sky-300 md:hidden"
           >
             {menuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
@@ -98,45 +100,44 @@ export default function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-400" />
             </span>
-            Veikia 100 % naršyklėje — failai niekur nesiunčiami
+            {t.hero.badge}
           </motion.div>
 
           <motion.h1 variants={fadeUp} initial="hidden" animate="show" custom={0.1}
             className="text-4xl font-extrabold leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl">
-            Iš brėžinio —{' '}
+            {t.hero.titleA}{' '}
             <span className="glow-cyan whitespace-nowrap bg-gradient-to-r from-sky-300 via-cyan-300 to-sky-400 bg-clip-text text-transparent">
-              į sąmatą
+              {t.hero.titleB}
             </span>
             <br />
-            per minutes.
+            {t.hero.titleC}
           </motion.h1>
 
           <motion.p variants={fadeUp} initial="hidden" animate="show" custom={0.22}
             className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            QTO automatiškai surenka statybos kiekius iš <b className="text-foreground">IFC</b>,{' '}
-            <b className="text-foreground">PDF</b> ir <b className="text-foreground">DXF</b> failų,
-            nuskaito projektinius žiniaraščius (OCR), tikrina save ir suformuoja bendrą darbų kiekių
-            žiniaraštį — paruoštą detaliosioms sąmatoms.
+            {t.hero.subA} <b className="text-foreground">IFC</b>,{' '}
+            <b className="text-foreground">PDF</b> {t.hero.and_} <b className="text-foreground">DXF</b>{' '}
+            {t.hero.subB}
           </motion.p>
 
           <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0.34}
             className="mt-8 flex flex-wrap items-center gap-3">
             <Link to="/app"
               className="group inline-flex items-center gap-2 rounded-xl bg-sky-500 px-6 py-3.5 text-sm font-bold text-slate-950 shadow-[0_0_36px_-6px] shadow-sky-500/70 transition-all hover:bg-sky-400 hover:shadow-sky-400/70">
-              Pradėti skaičiuoti
+              {t.hero.cta1}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <a href="#kaip-veikia"
               className="inline-flex items-center gap-2 rounded-xl border border-border bg-card/60 px-6 py-3.5 text-sm font-semibold backdrop-blur transition-colors hover:border-sky-400/50 hover:text-sky-300">
-              Kaip tai veikia
+              {t.hero.cta2}
             </a>
           </motion.div>
 
           <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0.46}
             className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Boxes className="h-3.5 w-3.5 text-sky-400" /> IFC 3D analizė</span>
-            <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-sky-400" /> Multi-PDF projektai</span>
-            <span className="flex items-center gap-1.5"><ScanText className="h-3.5 w-3.5 text-sky-400" /> OCR žiniaraščiai</span>
+            <span className="flex items-center gap-1.5"><Boxes className="h-3.5 w-3.5 text-sky-400" /> {t.hero.chips[0]}</span>
+            <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-sky-400" /> {t.hero.chips[1]}</span>
+            <span className="flex items-center gap-1.5"><ScanText className="h-3.5 w-3.5 text-sky-400" /> {t.hero.chips[2]}</span>
           </motion.div>
         </div>
 
@@ -150,12 +151,12 @@ export default function Hero() {
           <div className="absolute -inset-4 rounded-3xl bg-sky-500/10 blur-2xl" />
           <div className="relative overflow-hidden rounded-2xl border border-sky-400/25 bg-slate-950/70 shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
-              <span className="font-dim text-[11px] text-muted-foreground">A-101 · aukštų planas · M1:100</span>
-              <span className="font-dim rounded border border-emerald-400/40 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">✓ mastelis</span>
+              <span className="font-dim text-[11px] text-muted-foreground">{t.hero.planSheet}</span>
+              <span className="font-dim rounded border border-emerald-400/40 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">{t.hero.planScale}</span>
             </div>
             <BlueprintPlan />
             <div className="border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">
-              Demonstracija kartojasi pati — arba užveskite pelę: kursorius <span className="text-cyan-300">prisiriša prie kampų</span>, kaip programoje
+              {t.hero.demoA} <span className="text-cyan-300">{t.hero.demoB}</span>{t.hero.demoC}
             </div>
           </div>
         </motion.div>

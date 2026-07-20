@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { Leaf } from 'lucide-react';
 import { summarizeCarbon } from '@/lib/carbon';
-import { CATEGORY_INFO } from '@/types/qto';
+import { CATEGORY_INFO, categoryLabel } from '@/types/qto';
 import { fmt } from '@/lib/format';
 import type { QtoItem } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 
 /** CO₂e suvestinė: bendras pėdsakas + skaidymas pagal kategorijas */
 export default function CarbonCard({ items }: { items: QtoItem[] }) {
+  const { t } = useI18n();
   const s = useMemo(() => summarizeCarbon(items), [items]);
   if (s.ratedCount === 0) return null;
   const tonnes = s.totalKg / 1000;
@@ -22,7 +24,7 @@ export default function CarbonCard({ items }: { items: QtoItem[] }) {
             ~{fmt(tonnes, 2)} t CO₂e
           </p>
           <p className="text-xs text-emerald-800/80 dark:text-emerald-200/80">
-            Orientacinis anglies pėdsakas (A1–A3) · įvertinta {s.ratedCount} iš {items.length} pozicijų
+            {t.report.carbonEst} {s.ratedCount} {t.report.carbonOf} {items.length} {t.report.carbonPositions}
           </p>
         </div>
       </div>
@@ -30,7 +32,7 @@ export default function CarbonCard({ items }: { items: QtoItem[] }) {
         {s.byCategory.slice(0, 5).map((c) => (
           <div key={c.category} className="flex items-center gap-2 text-xs">
             <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_INFO[c.category]?.color ?? '#9ca3af' }} />
-            <span className="w-32 truncate">{CATEGORY_INFO[c.category]?.lt ?? c.category}</span>
+            <span className="w-32 truncate">{categoryLabel(c.category)}</span>
             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-900">
               <span
                 className="block h-full bg-emerald-500"
@@ -42,7 +44,7 @@ export default function CarbonCard({ items }: { items: QtoItem[] }) {
         ))}
       </div>
       <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70 dark:text-emerald-200/60">
-        Koeficientai orientaciniai (ICE Database / EPD vidurkiai) – skirti variantų palyginimui, ne sertifikuotam LCA vertinimui.
+        {t.report.carbonNote}
       </p>
     </div>
   );

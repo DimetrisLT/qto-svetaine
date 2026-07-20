@@ -1,5 +1,6 @@
 // Savikontrolės patikrinimai: geometrija, logika, pilnumas
-import { CATEGORY_INFO, type CheckResult, type QtoItem, type SourceMeta } from '@/types/qto';
+import { categoryLabel, type CheckResult, type ElementCategory, type QtoItem, type SourceMeta } from '@/types/qto';
+import { L } from '@/i18n/store';
 import { fmt } from '@/lib/format';
 import { polygonArea } from '@/lib/pdf/measure';
 import { estimateOverlapRatio } from '@/lib/geometry2d';
@@ -15,53 +16,53 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
 
   const parsed = metas.filter((m) => m.parsed);
   if (parsed.length === 0 || items.length === 0) {
-    add('completeness', 'Duomenų įkėlimas', 'warn', 'Neįkeltas nė vienas failas arba nerasta jokių elementų.');
+    add('completeness', L({ lt: 'Duomenų įkėlimas', en: 'Data upload' }), 'warn', L({ lt: 'Neįkeltas nė vienas failas arba nerasta jokių elementų.', en: 'No file uploaded or no elements found.' }));
     return checks;
   }
 
   // --- PILNUMAS ---
   for (const m of parsed) {
     if (m.source === 'IFC') {
-      add('completeness', `IFC failas „${m.fileName}“`, 'ok',
-        `Atpažinta elementų: ${m.totalElements ?? 0} (vienetai: ${m.unitLabel ?? 'm'}).`);
+      add('completeness', L({ lt: `IFC failas „${m.fileName}“`, en: `IFC file "${m.fileName}"` }), 'ok',
+        L({ lt: `Atpažinta elementų: ${m.totalElements ?? 0} (vienetai: ${m.unitLabel ?? 'm'}).`, en: `Elements recognized: ${m.totalElements ?? 0} (units: ${m.unitLabel ?? 'm'}).` }));
       if ((m.withoutQuantities ?? 0) > 0) {
-        add('completeness', 'IFC elementai be Qto savybių', 'warn',
-          `${m.withoutQuantities} elementų neturi deklaruotų kiekių (${(m.withoutQuantitiesClasses ?? []).join(', ') || 'įvairūs'}). Jiems kiekiai apskaičiuoti iš geometrijos arba pažymėti „tik vnt.“.`);
+        add('completeness', L({ lt: 'IFC elementai be Qto savybių', en: 'IFC elements without Qto properties' }), 'warn',
+          L({ lt: `${m.withoutQuantities} elementų neturi deklaruotų kiekių (${(m.withoutQuantitiesClasses ?? []).join(', ') || 'įvairūs'}). Jiems kiekiai apskaičiuoti iš geometrijos arba pažymėti „tik vnt.“.`, en: `${m.withoutQuantities} elements have no declared quantities (${(m.withoutQuantitiesClasses ?? []).join(', ') || 'various'}). Their quantities were computed from geometry or marked "count only".` }));
       } else {
-        add('completeness', 'IFC Qto savybės', 'ok', 'Visi elementai turi deklaruotas kiekių (Qto) savybes.');
+        add('completeness', L({ lt: 'IFC Qto savybės', en: 'IFC Qto properties' }), 'ok', L({ lt: 'Visi elementai turi deklaruotas kiekių (Qto) savybes.', en: 'All elements have declared quantity (Qto) properties.' }));
       }
     }
     if (m.source === 'PDF') {
       const files = m.pdfFiles ?? [];
       const uncal = files.filter((f) => !f.calibrated);
       if (files.length > 0) {
-        add('completeness', 'PDF projekto failai', 'ok',
-          `Projektas: ${files.length} failai (${files.map((f) => `${f.discipline}`).join(', ')}). Visi matavimai sueina į bendrą žiniaraštį.`);
+        add('completeness', L({ lt: 'PDF projekto failai', en: 'PDF project files' }), 'ok',
+          L({ lt: `Projektas: ${files.length} failai (${files.map((f) => `${f.discipline}`).join(', ')}). Visi matavimai sueina į bendrą žiniaraštį.`, en: `Project: ${files.length} files (${files.map((f) => `${f.discipline}`).join(', ')}). All measurements flow into one schedule.` }));
       }
       if (uncal.length > 0) {
-        add('completeness', 'PDF mastelio kalibravimas', 'warn',
-          `Nesukalibruoti failai: ${uncal.map((f) => `„${f.name}“`).join(', ')}. Kiekvienam failui sukalibruokite mastelį dviejų žinomų taškų atstumu arba taikykite automatiškai aptiktą mastelį.`);
+        add('completeness', L({ lt: 'PDF mastelio kalibravimas', en: 'PDF scale calibration' }), 'warn',
+          L({ lt: `Nesukalibruoti failai: ${uncal.map((f) => `„${f.name}“`).join(', ')}. Kiekvienam failui sukalibruokite mastelį dviejų žinomų taškų atstumu arba taikykite automatiškai aptiktą mastelį.`, en: `Uncalibrated files: ${uncal.map((f) => `"${f.name}"`).join(', ')}. Calibrate each file with two known points or apply the automatically detected scale.` }));
       } else if (files.length > 0) {
-        add('completeness', 'PDF mastelio kalibravimas', 'ok', 'Visiems PDF failams mastelis sukalibruotas.');
+        add('completeness', L({ lt: 'PDF mastelio kalibravimas', en: 'PDF scale calibration' }), 'ok', L({ lt: 'Visiems PDF failams mastelis sukalibruotas.', en: 'Scale calibrated for all PDF files.' }));
       }
       // Rankinės kalibracijos neatitiktis automatiškai aptiktam masteliui
       const deviating = files.filter((f) =>
         f.upm && f.detectedUpm && Math.abs(f.upm - f.detectedUpm) / f.detectedUpm > 0.02);
       if (deviating.length > 0) {
-        add('completeness', 'PDF mastelio neatitiktis', 'warn',
-          `Rankinė kalibracija nukrypsta >2 % nuo brėžinyje nurodyto mastelio: ${deviating.map((f) => `„${f.name}“ (${fmt(Math.abs(f.upm! - f.detectedUpm!) / f.detectedUpm! * 100, 1)} %)`).join(', ')}. Patikrinkite etaloną arba taikykite aptiktą mastelį.`);
+        add('completeness', L({ lt: 'PDF mastelio neatitiktis', en: 'PDF scale mismatch' }), 'warn',
+          L({ lt: `Rankinė kalibracija nukrypsta >2 % nuo brėžinyje nurodyto mastelio: ${deviating.map((f) => `„${f.name}“ (${fmt(Math.abs(f.upm! - f.detectedUpm!) / f.detectedUpm! * 100, 1)} %)`).join(', ')}. Patikrinkite etaloną arba taikykite aptiktą mastelį.`, en: `Manual calibration deviates >2% from the scale noted on the drawing: ${deviating.map((f) => `"${f.name}" (${fmt(Math.abs(f.upm! - f.detectedUpm!) / f.detectedUpm! * 100, 1)}%)`).join(', ')}. Check the reference or apply the detected scale.` }));
       } else if (files.some((f) => f.upm && f.detectedUpm)) {
-        add('completeness', 'PDF mastelio sutapimas', 'ok',
-          'Kalibracija sutampa su brėžinyje nurodytu masteliu (±2 %).');
+        add('completeness', L({ lt: 'PDF mastelio sutapimas', en: 'PDF scale match' }), 'ok',
+          L({ lt: 'Kalibracija sutampa su brėžinyje nurodytu masteliu (±2 %).', en: 'Calibration matches the scale noted on the drawing (±2%).' }));
       }
     }
     if (m.source === 'DXF') {
       const un = m.unassignedLayers ?? [];
       if (un.length > 0) {
-        add('completeness', 'DXF nepriskirti sluoksniai', 'warn',
-          `Šie sluoksniai turi geometrijos, bet neįtraukti į kiekius: ${un.join(', ')}.`);
+        add('completeness', L({ lt: 'DXF nepriskirti sluoksniai', en: 'DXF unassigned layers' }), 'warn',
+          L({ lt: `Šie sluoksniai turi geometrijos, bet neįtraukti į kiekius: ${un.join(', ')}.`, en: `These layers contain geometry but are not included in quantities: ${un.join(', ')}.` }));
       } else {
-        add('completeness', 'DXF sluoksnių priskyrimas', 'ok', 'Visi sluoksniai su geometrija įtraukti į kiekius.');
+        add('completeness', L({ lt: 'DXF sluoksnių priskyrimas', en: 'DXF layer assignment' }), 'ok', L({ lt: 'Visi sluoksniai su geometrija įtraukti į kiekius.', en: 'All layers with geometry are included in quantities.' }));
       }
     }
   }
@@ -70,27 +71,27 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   const zeroDim = items.filter((i) =>
     [i.length_m, i.width_m, i.height_m, i.area_m2, i.volume_m3].some((d) => d !== undefined && d <= 0));
   if (zeroDim.length) {
-    add('logic', 'Nuliniai / neigiami matmenys', 'warn',
-      `${zeroDim.length} elementų turi nulinius arba neigiamus matmenis: ${zeroDim.slice(0, 5).map((i) => i.name).join(', ')}${zeroDim.length > 5 ? '…' : ''}`);
+    add('logic', L({ lt: 'Nuliniai / neigiami matmenys', en: 'Zero / negative dimensions' }), 'warn',
+      L({ lt: `${zeroDim.length} elementų turi nulinius arba neigiamus matmenis: ${zeroDim.slice(0, 5).map((i) => i.name).join(', ')}${zeroDim.length > 5 ? '…' : ''}`, en: `${zeroDim.length} elements have zero or negative dimensions: ${zeroDim.slice(0, 5).map((i) => i.name).join(', ')}${zeroDim.length > 5 ? '…' : ''}` }));
   } else {
-    add('logic', 'Matmenų logika', 'ok', 'Fiziškai nelogiškų (nulinių ar neigiamų) matmenų nerasta.');
+    add('logic', L({ lt: 'Matmenų logika', en: 'Dimension logic' }), 'ok', L({ lt: 'Fiziškai nelogiškų (nulinių ar neigiamų) matmenų nerasta.', en: 'No physically impossible (zero or negative) dimensions found.' }));
   }
 
   const noMeasure = items.filter((i) =>
     i.unit !== 'vnt.' && i.area_m2 === undefined && i.volume_m3 === undefined && i.length_m === undefined);
   if (noMeasure.length) {
-    add('logic', 'Elementai be matų', 'warn',
-      `${noMeasure.length} elementų neturi nei ilgio, nei ploto, nei tūrio (pvz., ${noMeasure.slice(0, 3).map((i) => i.name).join(', ')}).`);
+    add('logic', L({ lt: 'Elementai be matų', en: 'Elements without dimensions' }), 'warn',
+      L({ lt: `${noMeasure.length} elementų neturi nei ilgio, nei ploto, nei tūrio (pvz., ${noMeasure.slice(0, 3).map((i) => i.name).join(', ')}).`, en: `${noMeasure.length} elements have neither length, area, nor volume (e.g., ${noMeasure.slice(0, 3).map((i) => i.name).join(', ')}).` }));
   }
 
   const noMaterial = items.filter((i) => !i.material);
   if (noMaterial.length && noMaterial.length < items.length) {
-    add('logic', 'Medžiagų nenurodyta', 'warn',
-      `${noMaterial.length} iš ${items.length} elementų neturi medžiagos žymos (šaltinyje nenurodyta).`);
+    add('logic', L({ lt: 'Medžiagų nenurodyta', en: 'Materials missing' }), 'warn',
+      L({ lt: `${noMaterial.length} iš ${items.length} elementų neturi medžiagos žymos (šaltinyje nenurodyta).`, en: `${noMaterial.length} of ${items.length} elements have no material tag (not specified in the source).` }));
   } else if (noMaterial.length === items.length && items.length > 0) {
-    add('logic', 'Medžiagų nenurodyta', 'warn', 'Nė vienas elementas neturi medžiagos žymos.');
+    add('logic', L({ lt: 'Medžiagų nenurodyta', en: 'Materials missing' }), 'warn', L({ lt: 'Nė vienas elementas neturi medžiagos žymos.', en: 'No element has a material tag.' }));
   } else {
-    add('logic', 'Medžiagų žymos', 'ok', 'Visiems elementams nurodytos medžiagos.');
+    add('logic', L({ lt: 'Medžiagų žymos', en: 'Material tags' }), 'ok', L({ lt: 'Visiems elementams nurodytos medžiagos.', en: 'All elements have materials specified.' }));
   }
 
   // --- GEOMETRIJA ---
@@ -99,11 +100,11 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   const deviating = cross.filter((i) => Math.abs(i.meshVolume_m3! - i.declaredVolume_m3!) / i.declaredVolume_m3! > 0.2);
   if (cross.length > 0) {
     if (deviating.length === 0) {
-      add('geometry', 'IFC tūrių kryžminis patikrinimas', 'ok',
-        `${cross.length} elementų deklaruoti tūriais sutampa su geometriniais (±20 %).`);
+      add('geometry', L({ lt: 'IFC tūrių kryžminis patikrinimas', en: 'IFC volume cross-check' }), 'ok',
+        L({ lt: `${cross.length} elementų deklaruoti tūriais sutampa su geometriniais (±20 %).`, en: `Declared volumes of ${cross.length} elements match the geometric ones (±20%).` }));
     } else {
-      add('geometry', 'IFC tūrių kryžminis patikrinimas', 'warn',
-        `${deviating.length} iš ${cross.length} elementų geometrinis tūris skiriasi >20 % (gali būti dėl angų, sudėtingos geometrijos). Pvz.: ${deviating.slice(0, 3).map((i) => i.name).join(', ')}.`);
+      add('geometry', L({ lt: 'IFC tūrių kryžminis patikrinimas', en: 'IFC volume cross-check' }), 'warn',
+        L({ lt: `${deviating.length} iš ${cross.length} elementų geometrinis tūris skiriasi >20 % (gali būti dėl angų, sudėtingos geometrijos). Pvz.: ${deviating.slice(0, 3).map((i) => i.name).join(', ')}.`, en: `${deviating.length} of ${cross.length} elements' geometric volume differs >20% (may be due to openings or complex geometry). E.g.: ${deviating.slice(0, 3).map((i) => i.name).join(', ')}.` }));
     }
   }
 
@@ -115,24 +116,24 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
     if (slabArea > 0) {
       const diff = Math.abs(slabArea - meta.spaceArea_m2) / meta.spaceArea_m2;
       if (diff <= 0.35) {
-        add('geometry', 'Perdangų ir patalpų plotų sutapimas', 'ok',
-          `Perdangų plotas ${fmt(slabArea)} m², patalpų plotas ${fmt(meta.spaceArea_m2)} m² (skirtumas ${fmt(diff * 100, 1)} %).`);
+        add('geometry', L({ lt: 'Perdangų ir patalpų plotų sutapimas', en: 'Slab vs. space area match' }), 'ok',
+          L({ lt: `Perdangų plotas ${fmt(slabArea)} m², patalpų plotas ${fmt(meta.spaceArea_m2)} m² (skirtumas ${fmt(diff * 100, 1)} %).`, en: `Slab area ${fmt(slabArea)} m², space area ${fmt(meta.spaceArea_m2)} m² (difference ${fmt(diff * 100, 1)}%).` }));
       } else {
-        add('geometry', 'Perdangų ir patalpų plotų sutapimas', 'warn',
-          `Perdangų plotas ${fmt(slabArea)} m² gerokai skiriasi nuo patalpų ploto ${fmt(meta.spaceArea_m2)} m² (${fmt(diff * 100, 1)} %). Patikrinkite, ar įtrauktos visos perdangos.`);
+        add('geometry', L({ lt: 'Perdangų ir patalpų plotų sutapimas', en: 'Slab vs. space area match' }), 'warn',
+          L({ lt: `Perdangų plotas ${fmt(slabArea)} m² gerokai skiriasi nuo patalpų ploto ${fmt(meta.spaceArea_m2)} m² (${fmt(diff * 100, 1)} %). Patikrinkite, ar įtrauktos visos perdangos.`, en: `Slab area ${fmt(slabArea)} m² differs significantly from space area ${fmt(meta.spaceArea_m2)} m² (${fmt(diff * 100, 1)}%). Check that all slabs are included.` }));
       }
     }
   }
 
   // 3) Suvestinė pagal kategorijas ir kilmę
   const cats = new Set(items.map((i) => i.category));
-  add('geometry', 'Kiekių suvestinė', 'ok',
-    `Iš viso eilučių: ${items.length}. Kategorijos: ${[...cats].map((c) => CATEGORY_INFO[c].lt).join(', ')}.`);
+  add('geometry', L({ lt: 'Kiekių suvestinė', en: 'Quantity summary' }), 'ok',
+    L({ lt: `Iš viso eilučių: ${items.length}. Kategorijos: ${[...cats].map((c) => categoryLabel(c)).join(', ')}.`, en: `Total rows: ${items.length}. Categories: ${[...cats].map((c) => categoryLabel(c)).join(', ')}.` }));
 
   const proj = items.filter((i) => i.origin === 'project').length;
   const ai = items.length - proj;
-  add('completeness', 'Kiekių kilmė', 'ok',
-    `Projekto duomenys: ${proj} poz.; skaičiuota AI: ${ai} poz. Žiniaraštyje jos pažymėtos atskirai.`);
+  add('completeness', L({ lt: 'Kiekių kilmė', en: 'Quantity origin' }), 'ok',
+    L({ lt: `Projekto duomenys: ${proj} poz.; skaičiuota AI: ${ai} poz. Žiniaraštyje jos pažymėtos atskirai.`, en: `Project data: ${proj} rows; AI calculated: ${ai} rows. They are tagged separately in the schedule.` }));
 
   // --- DVIGUBO SKAIČIAVIMO KONTROLĖ ---
   // 4) To paties failo/puslapio/kategorijos plotų persidengimai
@@ -147,10 +148,10 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
     }
   }
   if (overlapPairs.length > 0) {
-    add('geometry', 'Plotų persidengimas (dvigubas skaičiavimas?)', 'warn',
-      `${overlapPairs.length} porų tos pačios kategorijos plotai persidengia >10 %: ${overlapPairs.slice(0, 3).map((p) => `„${p.a.name}“ ∩ „${p.b.name}“ (${fmt(p.ratio * 100, 0)} %)`).join('; ')}${overlapPairs.length > 3 ? '…' : ''}. Patikrinkite, ar neskačiuojate tos pačios vietos dukart.`);
+    add('geometry', L({ lt: 'Plotų persidengimas (dvigubas skaičiavimas?)', en: 'Area overlap (double counting?)' }), 'warn',
+      L({ lt: `${overlapPairs.length} porų tos pačios kategorijos plotai persidengia >10 %: ${overlapPairs.slice(0, 3).map((p) => `„${p.a.name}“ ∩ „${p.b.name}“ (${fmt(p.ratio * 100, 0)} %)`).join('; ')}${overlapPairs.length > 3 ? '…' : ''}. Patikrinkite, ar neskačiuojate tos pačios vietos dukart.`, en: `${overlapPairs.length} pairs of same-category areas overlap >10%: ${overlapPairs.slice(0, 3).map((p) => `"${p.a.name}" ∩ "${p.b.name}" (${fmt(p.ratio * 100, 0)}%)`).join('; ')}${overlapPairs.length > 3 ? '…' : ''}. Check you are not counting the same spot twice.` }));
   } else if (areaItems.length >= 2) {
-    add('geometry', 'Plotų persidengimas', 'ok', 'Tos pačios kategorijos išmatuoti plotai tarpusavyje reikšmingai nepersidengia.');
+    add('geometry', L({ lt: 'Plotų persidengimas', en: 'Area overlap' }), 'ok', L({ lt: 'Tos pačios kategorijos išmatuoti plotai tarpusavyje reikšmingai nepersidengia.', en: 'Measured areas of the same category do not overlap significantly.' }));
   }
 
   // 5) Tos pačios kategorijos ilgiai skirtingose projekto dalyse (A ↔ SK)
@@ -169,13 +170,13 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
       if (dA === dB || cA !== cB) continue;
       const vA = byDiscCat.get(keys[x])!, vB = byDiscCat.get(keys[y])!;
       if (vA > 0 && vB > 0 && Math.abs(vA - vB) / Math.max(vA, vB) <= 0.05) {
-        dupPairs.push(`${CATEGORY_INFO[cA as QtoItem['category']].lt}: ${dA} ${fmt(vA)} m ≈ ${dB} ${fmt(vB)} m`);
+        dupPairs.push(`${categoryLabel(cA as ElementCategory)}: ${dA} ${fmt(vA)} m ≈ ${dB} ${fmt(vB)} m`);
       }
     }
   }
   if (dupPairs.length > 0) {
-    add('geometry', 'Kiekiai dubliuojasi tarp projekto dalių', 'warn',
-      `Beveik vienodi ilgiai skirtingose dalyse (±5 %): ${dupPairs.slice(0, 3).join('; ')}. Jei tai ta pati konstrukcija A ir SK brėžiniuose – palikite tik vieną šaltinį.`);
+    add('geometry', L({ lt: 'Kiekiai dubliuojasi tarp projekto dalių', en: 'Quantities duplicated across disciplines' }), 'warn',
+      L({ lt: `Beveik vienodi ilgiai skirtingose dalyse (±5 %): ${dupPairs.slice(0, 3).join('; ')}. Jei tai ta pati konstrukcija A ir SK brėžiniuose – palikite tik vieną šaltinį.`, en: `Nearly identical lengths in different disciplines (±5%): ${dupPairs.slice(0, 3).join('; ')}. If this is the same structure in the A and S drawings – keep only one source.` }));
   }
 
   // 6) Skaičiavimo (vnt.) sutikrinimas su projekto žiniaraščiu (OCR)
@@ -191,16 +192,16 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   for (const [cat, pv] of projCounts) {
     const av = aiCounts.get(cat);
     if (av === undefined) continue;
-    const lt = CATEGORY_INFO[cat as QtoItem['category']].lt;
-    if (pv === av) countMatches.push(`${lt}: ${pv} vnt.`);
-    else countMismatches.push(`${lt}: žiniaraštyje ${pv} vnt., išmatuota plane ${av} vnt.`);
+    const cl = categoryLabel(cat as ElementCategory);
+    if (pv === av) countMatches.push(`${cl}: ${pv} ${L({ lt: 'vnt.', en: 'pcs' })}`);
+    else countMismatches.push(L({ lt: `${cl}: žiniaraštyje ${pv} vnt., išmatuota plane ${av} vnt.`, en: `${cl}: ${pv} pcs in schedule, ${av} pcs measured on plan` }));
   }
   if (countMismatches.length > 0) {
-    add('geometry', 'Skaičiavimas nesutampa su projekto žiniaraščiu', 'warn',
-      `${countMismatches.join('; ')}. Patikrinkite, ar plane nepraleista pozicijų arba žiniaraštis neįtrauktas dukart.`);
+    add('geometry', L({ lt: 'Skaičiavimas nesutampa su projekto žiniaraščiu', en: 'Count does not match the project schedule' }), 'warn',
+      L({ lt: `${countMismatches.join('; ')}. Patikrinkite, ar plane nepraleista pozicijų arba žiniaraštis neįtrauktas dukart.`, en: `${countMismatches.join('; ')}. Check whether rows were missed on the plan or the schedule was included twice.` }));
   } else if (countMatches.length > 0) {
-    add('geometry', 'Skaičiavimo sutikrinimas su žiniaraščiu', 'ok',
-      `Vnt. kiekiai sutampa su projekto žiniaraščiu: ${countMatches.join('; ')}.`);
+    add('geometry', L({ lt: 'Skaičiavimo sutikrinimas su žiniaraščiu', en: 'Count cross-check with schedule' }), 'ok',
+      L({ lt: `Vnt. kiekiai sutampa su projekto žiniaraščiu: ${countMatches.join('; ')}.`, en: `Piece counts match the project schedule: ${countMatches.join('; ')}.` }));
   }
 
   // --- ŠALTINIŲ TRIANGULIACIJA ---
@@ -226,20 +227,20 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
     const page = key.split('|')[1];
     if (hit !== undefined) {
       const matchSum = sums.find((s) => Math.abs(s.value - hit) / hit <= 0.02)!;
-      add('geometry', 'OCR žiniaraščio aritmetika', 'ok',
-        `p.${page}: pozicijų suma ${matchSum.label} sutampa su žiniaraščio „VISO“ eilute (±2 %).`);
+      add('geometry', L({ lt: 'OCR žiniaraščio aritmetika', en: 'OCR schedule arithmetic' }), 'ok',
+        L({ lt: `p.${page}: pozicijų suma ${matchSum.label} sutampa su žiniaraščio „VISO“ eilute (±2 %).`, en: `p.${page}: row sum ${matchSum.label} matches the schedule "TOTAL" row (±2%).` }));
     } else if (sums.length > 0) {
-      add('geometry', 'OCR žiniaraščio aritmetika', 'warn',
-        `p.${page}: pozicijų suma ${sums.map((s) => s.label).join(' + ')} NESUTAMPA su „VISO“ eilute (${candidates.map((c) => fmt(c, 2)).join(' / ')}). Galimai ne visos eilutės įtrauktos arba OCR suklaidino skaičių – patikrinkite.`);
+      add('geometry', L({ lt: 'OCR žiniaraščio aritmetika', en: 'OCR schedule arithmetic' }), 'warn',
+        L({ lt: `p.${page}: pozicijų suma ${sums.map((s) => s.label).join(' + ')} NESUTAMPA su „VISO“ eilute (${candidates.map((c) => fmt(c, 2)).join(' / ')}). Galimai ne visos eilutės įtrauktos arba OCR suklaidino skaičių – patikrinkite.`, en: `p.${page}: row sum ${sums.map((s) => s.label).join(' + ')} does NOT match the "TOTAL" row (${candidates.map((c) => fmt(c, 2)).join(' / ')}). Some rows may be missing or OCR misread a number – please check.` }));
     }
   }
 
   // 8) Projekto duomenys ↔ AI matavimai toje pačioje kategorijoje (plotai, tūriai, ilgiai)
-  type Kind = { get: (i: QtoItem) => number | undefined; unit: string; lt: string };
+  type Kind = { get: (i: QtoItem) => number | undefined; unit: string; lt: string; en: string };
   const KINDS: Kind[] = [
-    { get: (i) => i.area_m2, unit: 'm²', lt: 'plotas' },
-    { get: (i) => i.volume_m3, unit: 'm³', lt: 'tūris' },
-    { get: (i) => i.length_m, unit: 'm', lt: 'ilgis' },
+    { get: (i) => i.area_m2, unit: 'm²', lt: 'plotas', en: 'area' },
+    { get: (i) => i.volume_m3, unit: 'm³', lt: 'tūris', en: 'volume' },
+    { get: (i) => i.length_m, unit: 'm', lt: 'ilgis', en: 'length' },
   ];
   const triOk: string[] = [];
   const triWarn: string[] = [];
@@ -249,18 +250,18 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
       const projSum = catItems.filter((i) => i.origin === 'project').reduce((s, i) => s + (k.get(i) ?? 0), 0);
       const aiSum = catItems.filter((i) => i.origin === 'ai').reduce((s, i) => s + (k.get(i) ?? 0), 0);
       if (projSum <= 0 || aiSum <= 0) continue;
-      const label = `${CATEGORY_INFO[cat].lt} (${k.lt}): proj. ${fmt(projSum)} ${k.unit} vs AI ${fmt(aiSum)} ${k.unit}`;
+      const label = `${categoryLabel(cat)} (${L({ lt: k.lt, en: k.en })}): proj. ${fmt(projSum)} ${k.unit} vs AI ${fmt(aiSum)} ${k.unit}`;
       if (Math.abs(projSum - aiSum) / Math.max(projSum, aiSum) <= 0.1) triOk.push(label);
       else triWarn.push(label);
     }
   }
   if (triWarn.length > 0) {
-    add('geometry', 'Trianguliacija proj. ↔ AI', 'warn',
-      `${triWarn.slice(0, 3).join('; ')}. Nesutapimas >10 % – patikrinkite apimtis (brutto/neto skirtumai yra įprasti, bet verta peržiūrėti).`);
+    add('geometry', L({ lt: 'Trianguliacija proj. ↔ AI', en: 'Triangulation proj. ↔ AI' }), 'warn',
+      L({ lt: `${triWarn.slice(0, 3).join('; ')}. Nesutapimas >10 % – patikrinkite apimtis (brutto/neto skirtumai yra įprasti, bet verta peržiūrėti).`, en: `${triWarn.slice(0, 3).join('; ')}. Mismatch >10% – check the scopes (gross/net differences are common but worth reviewing).` }));
   }
   if (triOk.length > 0) {
-    add('geometry', 'Trianguliacija proj. ↔ AI', 'ok',
-      `Projekto duomenys ir AI matavimai sutampa (±10 %): ${triOk.slice(0, 3).join('; ')}.`);
+    add('geometry', L({ lt: 'Trianguliacija proj. ↔ AI', en: 'Triangulation proj. ↔ AI' }), 'ok',
+      L({ lt: `Projekto duomenys ir AI matavimai sutampa (±10 %): ${triOk.slice(0, 3).join('; ')}.`, en: `Project data and AI measurements agree (±10%): ${triOk.slice(0, 3).join('; ')}.` }));
   }
 
   // 9) IFC ↔ PDF kryžminis sutikrinimas toje pačioje kategorijoje
@@ -274,17 +275,17 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
         const a = ifcItems.filter((i) => i.category === cat).reduce((s, i) => s + (k.get(i) ?? 0), 0);
         const b = pdfItems.filter((i) => i.category === cat).reduce((s, i) => s + (k.get(i) ?? 0), 0);
         if (a <= 0 || b <= 0) continue;
-        const label = `${CATEGORY_INFO[cat].lt} (${k.lt}): IFC ${fmt(a)} ${k.unit} vs PDF ${fmt(b)} ${k.unit}`;
+        const label = `${categoryLabel(cat)} (${L({ lt: k.lt, en: k.en })}): IFC ${fmt(a)} ${k.unit} vs PDF ${fmt(b)} ${k.unit}`;
         if (Math.abs(a - b) / Math.max(a, b) <= 0.1) crossOk.push(label);
         else crossWarn.push(label);
       }
     }
     if (crossWarn.length > 0) {
-      add('geometry', 'Trianguliacija IFC ↔ PDF', 'warn',
-        `${crossWarn.slice(0, 3).join('; ')}. Modelio ir brėžinio kiekiai skiriasi >10 % – patikrinkite, ar abu šaltiniai apima tą pačią apimtį.`);
+      add('geometry', L({ lt: 'Trianguliacija IFC ↔ PDF', en: 'Triangulation IFC ↔ PDF' }), 'warn',
+        L({ lt: `${crossWarn.slice(0, 3).join('; ')}. Modelio ir brėžinio kiekiai skiriasi >10 % – patikrinkite, ar abu šaltiniai apima tą pačią apimtį.`, en: `${crossWarn.slice(0, 3).join('; ')}. Model and drawing quantities differ >10% – check that both sources cover the same scope.` }));
     } else if (crossOk.length > 0) {
-      add('geometry', 'Trianguliacija IFC ↔ PDF', 'ok',
-        `IFC modelio ir PDF matavimų kiekiai sutampa (±10 %): ${crossOk.slice(0, 3).join('; ')}.`);
+      add('geometry', L({ lt: 'Trianguliacija IFC ↔ PDF', en: 'Triangulation IFC ↔ PDF' }), 'ok',
+        L({ lt: `IFC modelio ir PDF matavimų kiekiai sutampa (±10 %): ${crossOk.slice(0, 3).join('; ')}.`, en: `IFC model and PDF measurement quantities agree (±10%): ${crossOk.slice(0, 3).join('; ')}.` }));
     }
   }
 
@@ -297,14 +298,14 @@ export function runSelfChecks(items: QtoItem[], metas: SourceMeta[]): CheckResul
   }
   const dupNames = [...nameCount.entries()].filter(([, n]) => n > 1);
   if (dupNames.length > 0) {
-    add('geometry', 'Pasikartojančios projekto pozicijos', 'warn',
-      `${dupNames.length} pozicijos įtrauktos daugiau nei vieną kartą: ${dupNames.slice(0, 3).map(([n, c]) => `„${n.split('|')[0]}“ ×${c}`).join('; ')}. Jei tai skirtingi brėžinių lapai – ignoruokite, jei tas pats žiniaraštis – palikite vieną.`);
+    add('geometry', L({ lt: 'Pasikartojančios projekto pozicijos', en: 'Duplicate project rows' }), 'warn',
+      L({ lt: `${dupNames.length} pozicijos įtrauktos daugiau nei vieną kartą: ${dupNames.slice(0, 3).map(([n, c]) => `„${n.split('|')[0]}“ ×${c}`).join('; ')}. Jei tai skirtingi brėžinių lapai – ignoruokite, jei tas pats žiniaraštis – palikite vieną.`, en: `${dupNames.length} rows were added more than once: ${dupNames.slice(0, 3).map(([n, c]) => `"${n.split('|')[0]}" ×${c}`).join('; ')}. If these are different drawing sheets – ignore; if it is the same schedule – keep one.` }));
   }
 
   // 11) Rodiklių „sveiko proto“ patikra (benchmark): santykiai prieš tipines normas
   for (const b of computeBenchmarks(items)) {
     if (b.status === 'na') continue;
-    add('logic', `Rodiklis: ${b.label}`, b.status, b.details);
+    add('logic', `${L({ lt: 'Rodiklis', en: 'Ratio' })}: ${b.label}`, b.status, b.details);
   }
 
   return checks;

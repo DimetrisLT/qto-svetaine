@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Cloud, Crosshair, ShieldCheck, Smartphone, ArrowLeft } from 'lucide-react';
+import { LangToggle, useI18n } from '@/i18n/I18nContext';
 
 function getOAuthUrl() {
   const kimiAuthUrl = import.meta.env.VITE_KIMI_AUTH_URL;
@@ -18,24 +19,23 @@ function getOAuthUrl() {
   return url.toString();
 }
 
-const PERKS = [
-  { icon: Cloud, text: 'Projektai saugomi debesyje – tęskite darbą iš bet kurio įrenginio' },
-  { icon: Smartphone, text: 'Aukšttyje matuokite telefonu, sąmatas ruoškite kompiuteriu' },
-  { icon: ShieldCheck, text: 'Brėžiniai lieka jūsų naršyklėje – į debesį keliauja tik kiekiai' },
-];
+const PERK_ICONS = [Cloud, Smartphone, ShieldCheck];
 
 export default function Login() {
+  const { t } = useI18n();
+  const PERKS = t.login.perks.map((text, i) => ({ icon: PERK_ICONS[i % PERK_ICONS.length], text }));
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">
+      <div className="absolute right-4 top-4"><LangToggle /></div>
       <div className="w-full max-w-md">
         {/* Logotipas */}
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
             <Crosshair className="h-7 w-7" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight">Prisijunkite prie QTO</h1>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">{t.login.title}</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Statybos kiekių surinkimas iš IFC, PDF ir DXF
+            {t.login.sub}
           </p>
         </div>
 
@@ -58,15 +58,15 @@ export default function Login() {
             window.location.href = getOAuthUrl();
           }}
         >
-          Prisijungti su Kimi
+          {t.login.btn}
         </Button>
 
         <div className="mt-6 flex items-center justify-between text-sm">
           <Link to="/" className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary">
-            <ArrowLeft className="h-3.5 w-3.5" /> Į svetainę
+            <ArrowLeft className="h-3.5 w-3.5" /> {t.login.toSite}
           </Link>
           <Link to="/app" className="font-medium text-primary hover:underline">
-            Tęsti be prisijungimo
+            {t.login.skip}
           </Link>
         </div>
       </div>

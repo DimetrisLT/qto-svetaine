@@ -7,6 +7,7 @@ import ZiniarastisTable from '@/components/ZiniarastisTable';
 import SelfCheckPanel from '@/components/SelfCheckPanel';
 import { runSelfChecks } from '@/lib/selfCheck';
 import type { QtoItem, SourceMeta } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface SharedData {
   version: 1;
@@ -17,6 +18,7 @@ interface SharedData {
 
 /** Vieša read-only peržiūra (be prisijungimo) – dalijimasis su užsakovu */
 export default function SharedView() {
+  const { t } = useI18n();
   const { token } = useParams<{ token: string }>();
   const q = trpc.shares.getPublic.useQuery({ token: token ?? '' }, { enabled: !!token, retry: false });
 
@@ -40,33 +42,33 @@ export default function SharedView() {
             <Building2 className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-lg font-bold leading-tight">{q.data?.name ?? 'Bendrinamas projektas'}</h1>
-            <p className="text-xs text-muted-foreground">Peržiūra tik skaitymui · QTO</p>
+            <h1 className="text-lg font-bold leading-tight">{q.data?.name ?? t.shared.title}</h1>
+            <p className="text-xs text-muted-foreground">{t.shared.readOnly}</p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        {q.isLoading && <p className="text-sm text-muted-foreground">Kraunama…</p>}
+        {q.isLoading && <p className="text-sm text-muted-foreground">{t.shared.loading}</p>}
         {q.error && (
           <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-6 text-center">
-            <p className="text-sm font-medium text-destructive">Nuoroda negalioja arba atšaukta.</p>
-            <Link to="/" className="mt-2 inline-block text-xs text-primary hover:underline">Į QTO pradžią →</Link>
+            <p className="text-sm font-medium text-destructive">{t.shared.invalid}</p>
+            <Link to="/" className="mt-2 inline-block text-xs text-primary hover:underline">{t.shared.toHome}</Link>
           </div>
         )}
         {parsed && (
           <>
             <SummaryCards items={parsed.items} />
             <div>
-              <h3 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h3>
-              <p className="mb-2 text-xs text-muted-foreground">Sugrupuota pagal darbų grupes · {parsed.items.length} pozicijos</p>
+              <h3 className="mb-1 text-lg font-semibold">{t.report.zinTitle}</h3>
+              <p className="mb-2 text-xs text-muted-foreground">{t.shared.grouped} {parsed.items.length} {t.shared.pozicijos}</p>
               <ZiniarastisTable items={parsed.items} />
             </div>
             <div className="rounded-xl border p-4">
               <SelfCheckPanel checks={checks} />
             </div>
             <p className="pb-6 text-center text-xs text-muted-foreground">
-              Sugeneruota su QTO — kiekiai yra orientaciniai, prieš naudojimą sąmatose juos turi patikrinti sąmatininkas.
+              {t.shared.footer}
             </p>
           </>
         )}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
-import { CATEGORY_INFO, CATEGORY_ORDER, type ElementCategory, type QtoItem } from '@/types/qto';
+import { CATEGORY_ORDER, categoryLabel, type ElementCategory, type QtoItem } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 import type { ScannedRow } from '@/lib/ocr/scanSchedule';
 import { uid } from '@/types/qto';
 
@@ -15,6 +16,7 @@ interface Props {
 
 /** Nuskaitytų (arba ranka įvestų) projekto pozicijų peržiūros ir taisymo langas */
 export default function ScheduleReview({ rows: initial, title, onSave, onCancel }: Props) {
+  const { t } = useI18n();
   const [rows, setRows] = useState<ScannedRow[]>(initial);
 
   const update = (id: string, patch: Partial<ScannedRow>) => {
@@ -36,19 +38,19 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
         <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Patikrinkite ir prireikus pataisykite – patvirtintos pozicijos bus pažymėtos kaip <b>projekto duomenys</b>.
+        {t.report.reviewNoteA} <b>{t.report.projData.toLowerCase()}</b>.
       </p>
       <div className="max-h-[380px] overflow-auto rounded-lg border">
         <table className="w-full text-xs">
           <thead className="bg-muted/60 sticky top-0">
             <tr className="text-left">
               <th className="px-2 py-1.5 w-6"></th>
-              <th className="px-2 py-1.5">Pavadinimas</th>
-              <th className="px-2 py-1.5 w-28">Kategorija</th>
-              <th className="px-2 py-1.5 w-16">Vnt.</th>
-              <th className="px-2 py-1.5 w-16">Kiekis</th>
-              <th className="px-2 py-1.5 w-16">m³/vnt.</th>
-              <th className="px-2 py-1.5 w-24">Medžiaga</th>
+              <th className="px-2 py-1.5">{t.report.thName}</th>
+              <th className="px-2 py-1.5 w-28">{t.report.thCat}</th>
+              <th className="px-2 py-1.5 w-16">{t.report.zinCols.unit}</th>
+              <th className="px-2 py-1.5 w-16">{t.report.thQty}</th>
+              <th className="px-2 py-1.5 w-16">{t.report.thPerVol}</th>
+              <th className="px-2 py-1.5 w-24">{t.report.thMat}</th>
             </tr>
           </thead>
           <tbody>
@@ -70,7 +72,7 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
                     onChange={(e) => update(r.id, { category: e.target.value as ElementCategory })}
                     className="h-7 w-full rounded border bg-background px-0.5"
                   >
-                    {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_INFO[c].lt}</option>)}
+                    {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
                   </select>
                 </td>
                 <td className="px-1 py-1">
@@ -119,14 +121,14 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
       </div>
       <div className="flex gap-1.5">
         <button onClick={addRow} className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs hover:bg-muted">
-          <Plus className="h-3.5 w-3.5" /> Eilutė
+          <Plus className="h-3.5 w-3.5" /> {t.report.addRow}
         </button>
         <button
           onClick={() => onSave(rows)}
           disabled={selected === 0}
           className="flex flex-1 items-center justify-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-40"
         >
-          <Check className="h-4 w-4" /> Įtraukti pažymėtas ({selected})
+          <Check className="h-4 w-4" /> {t.report.includeN} ({selected})
         </button>
       </div>
     </div>

@@ -3,7 +3,8 @@ import { FilePlus2, FileText, Trash2 } from 'lucide-react';
 import FileDrop from '@/components/FileDrop';
 import EmptyGuide from '@/components/EmptyGuide';
 import PdfViewer from '@/components/PdfViewer';
-import { DISCIPLINES, detectDiscipline, uid, type QtoItem, type SourceMeta } from '@/types/qto';
+import { DISCIPLINES, detectDiscipline, disciplineLabel, uid, type QtoItem, type SourceMeta } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 import { cn } from '@/lib/utils';
 
 interface PdfFileEntry {
@@ -26,6 +27,7 @@ interface Props {
 
 /** Projekto režimas: keli susiję PDF failai (A, SK, VK dalys) kaip viena visuma */
 export default function PdfSection({ items, onData, savedFilesMeta, locate = null }: Props) {
+  const { t } = useI18n();
   const [files, setFiles] = useState<PdfFileEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -33,6 +35,16 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
   // Išsaugotą failų sąrašą įsimename vieną kartą – vėlesni emit() jo nenublukina,
   // todėl visi perinkti failai ras savo kalibracijas.
   const savedRef = useRef(savedFilesMeta);
+  // Projekto tęsimas: meta gali atsirasti jau po mount – sinchronizuojame neprarasdami naujausių kalibracijų
+  useEffect(() => {
+    if (savedFilesMeta?.length) {
+      const prev = savedRef.current ?? [];
+      savedRef.current = savedFilesMeta.map((f) => {
+        const old = prev.find((x) => x.name === f.name);
+        return old?.upm && !f.upm ? { ...f, upm: old.upm } : f;
+      });
+    }
+  }, [savedFilesMeta]);
 
   const active = files.find((f) => f.id === activeId) ?? null;
 
@@ -126,14 +138,13 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
       <div className="space-y-3">
         {items.length > 0 && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-            Atkurtos <strong>{items.length}</strong> pozicijos iš išsaugoto projekto. Įkelkite tuos pačius PDF failus
-            (sutapdinsime pagal pavadinimą) – mastelis, projekto dalis ir pozicijų pririšimas bus atkurti automatiškai.
+            {t.pdf.restoredA} <strong>{items.length}</strong> {t.pdf.restoredB}
           </div>
         )}
         <FileDrop
         accept=".pdf"
-        label="Įkelkite projekto PDF brėžinius"
-        hint="Galite įkelti kelis susijusius failus: architektūros dalį (A), konstrukcijų dalį (SK), inžinerines dalis (VK, E, Š, V). Kiekvienas failas kalibruojamas atskirai, o visi matavimai sueina į bendrą darbų kiekių žiniaraštį."
+        label={t.pdf.drop}
+        hint={t.pdf.hint}
         onFile={addFile}
         sample={{ url: '/pavyzdys-planas.pdf', fileName: 'pavyzdys-planas.pdf' }}
       />
@@ -161,11 +172,11 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
             <select
               value={f.discipline}
               onChange={(e) => setDiscipline(f.id, e.target.value)}
-              title="Projekto dalis"
+              title={t.pdf.discTitle}
               className="h-7 max-w-[106px] rounded-md border bg-background px-1 text-xs sm:max-w-none"
             >
               {DISCIPLINES.map((d) => (
-                <option key={d.code} value={d.code}>{d.code} – {d.lt}</option>
+                <option key={d.code} value={d.code}>{d.code} – {disciplineLabel(d.code)}</option>
               ))}
             </select>
             <span
@@ -175,32 +186,32 @@ export default function PdfSection({ items, onData, savedFilesMeta, locate = nul
                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
               )}
-              title={f.unitsPerMeter ? 'Mastelis sukalibruotas' : 'Reikia kalibruoti mastelį'}
+              title={f.unitsPerMeter ? t.pdf.calibrated : t.pdf.needCalibrate}
             >
-              {f.unitsPerMeter ? '✓ mastelis' : '! mastelis'}
+              {f.unitsPerMeter ? t.pdf.scaleOk : t.pdf.scaleMissing}
             </span>
-            <button onClick={() => removeFile(f.id)} className="text-muted-foreground hover:text-destructive" title="Pašalinti failą">
+            <button onClick={() => removeFile(f.id)} className="text-muted-foreground hover:text-destructive" title={t.pdf.removeFile}>
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}
         {adding ? (
           <div className="w-full max-w-xl">
-            <FileDrop accept=".pdf" label="Pridėti dar vieną PDF" onFile={addFile} />
+            <FileDrop accept=".pdf" label={t.pdf.addAnother} onFile={addFile} />
           </div>
         ) : (
           <button
             onClick={() => setAdding(true)}
             className="flex items-center gap-1.5 rounded-xl border border-dashed px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary"
           >
-            <FilePlus2 className="h-4 w-4" /> Pridėti PDF
+            <FilePlus2 className="h-4 w-4" /> {t.pdf.addShort}
           </button>
         )}
       </div>
 
       {locateMissing && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          ⚠️ Šios pozicijos brėžinys neįkeltas šioje sesijoje – įkelkite PDF failą, kad parodytume matavimo vietą.
+          {t.pdf.locateMissing}
         </p>
       )}
 

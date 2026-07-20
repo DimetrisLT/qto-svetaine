@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import { useI18n } from '@/i18n/I18nContext';
 
 const KEY = 'qto-theme';
 
@@ -16,6 +17,7 @@ export function applyStoredTheme() {
 
 /** Saulė/mėnulis – šviesus ↔ tamsus („blueprint“) režimas */
 export default function ThemeToggle() {
+  const { t } = useI18n();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const toggle = () => {
     const next = !dark;
@@ -26,7 +28,7 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      title={dark ? 'Perjungti į šviesų režimą' : 'Perjungti į tamsų režimą'}
+      title={dark ? t.app.themeLight : t.app.themeDark}
       className="flex items-center rounded-lg border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
     >
       {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}

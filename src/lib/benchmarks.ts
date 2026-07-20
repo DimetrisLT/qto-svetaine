@@ -4,6 +4,7 @@
 // Diapazonai – orientaciniai (gyvenamieji/administraciniai pastatai), konfigūruojami.
 import type { QtoItem } from '@/types/qto';
 import { fmt } from '@/lib/format';
+import { L } from '@/i18n/store';
 
 export interface BenchmarkResult {
   id: string;
@@ -58,45 +59,51 @@ interface Rule {
   compute: (t: BenchmarkTotals) => number | null;
 }
 
-export const BENCHMARK_RULES: Rule[] = [
-  {
-    id: 'concrete_per_floor',
-    label: 'Betonas / grindų plotas',
-    unit: 'm³/m²',
-    range: [0.12, 0.8],
-    typical: '0,25–0,55 m³/m² (gyv./admin. pastatai)',
-    compute: (t) => (t.concrete_m3 > 0 && t.floorArea_m2 > 0 ? t.concrete_m3 / t.floorArea_m2 : null),
-  },
-  {
-    id: 'rebar_per_concrete',
-    label: 'Armatūra / betonas',
-    unit: 'kg/m³',
-    range: [30, 320],
-    typical: '80–200 kg/m³ (sijos iki ~300, kolonos iki ~450)',
-    compute: (t) => (t.rebar_kg > 0 && t.concrete_m3 > 0 ? t.rebar_kg / t.concrete_m3 : null),
-  },
-  {
-    id: 'formwork_per_concrete',
-    label: 'Kofanas / betonas',
-    unit: 'm²/m³',
-    range: [3.5, 15],
-    typical: '6–11 m²/m³ (karkasiniai pastatai)',
-    compute: (t) => (t.formwork_m2 > 0 && t.concrete_m3 > 0 ? t.formwork_m2 / t.concrete_m3 : null),
-  },
-  {
-    id: 'wallfinish_per_floor',
-    label: 'Sienų apdaila / grindų plotas',
-    unit: 'm²/m²',
-    range: [0.8, 4.0],
-    typical: '1,8–3,0 m²/m²',
-    compute: (t) => (t.wallFinish_m2 > 0 && t.floorArea_m2 > 0 ? t.wallFinish_m2 / t.floorArea_m2 : null),
-  },
-];
+/** Taisyklės generuojamos darbo metu – kad etiketės atitiktų aktyvią kalbą */
+export function rules(): Rule[] {
+  return [
+    {
+      id: 'concrete_per_floor',
+      label: L({ lt: 'Betonas / grindų plotas', en: 'Concrete / floor area' }),
+      unit: 'm³/m²',
+      range: [0.12, 0.8],
+      typical: L({ lt: '0,25–0,55 m³/m² (gyv./admin. pastatai)', en: '0.25–0.55 m³/m² (residential/office)' }),
+      compute: (t) => (t.concrete_m3 > 0 && t.floorArea_m2 > 0 ? t.concrete_m3 / t.floorArea_m2 : null),
+    },
+    {
+      id: 'rebar_per_concrete',
+      label: L({ lt: 'Armatūra / betonas', en: 'Rebar / concrete' }),
+      unit: 'kg/m³',
+      range: [30, 320],
+      typical: L({ lt: '80–200 kg/m³ (sijos iki ~300, kolonos iki ~450)', en: '80–200 kg/m³ (beams up to ~300, columns ~450)' }),
+      compute: (t) => (t.rebar_kg > 0 && t.concrete_m3 > 0 ? t.rebar_kg / t.concrete_m3 : null),
+    },
+    {
+      id: 'formwork_per_concrete',
+      label: L({ lt: 'Kofanas / betonas', en: 'Formwork / concrete' }),
+      unit: 'm²/m³',
+      range: [3.5, 15],
+      typical: L({ lt: '6–11 m²/m³ (karkasiniai pastatai)', en: '6–11 m²/m³ (frame buildings)' }),
+      compute: (t) => (t.formwork_m2 > 0 && t.concrete_m3 > 0 ? t.formwork_m2 / t.concrete_m3 : null),
+    },
+    {
+      id: 'wallfinish_per_floor',
+      label: L({ lt: 'Sienų apdaila / grindų plotas', en: 'Wall finish / floor area' }),
+      unit: 'm²/m²',
+      range: [0.8, 4.0],
+      typical: '1.8–3.0 m²/m²',
+      compute: (t) => (t.wallFinish_m2 > 0 && t.floorArea_m2 > 0 ? t.wallFinish_m2 / t.floorArea_m2 : null),
+    },
+  ];
+}
+
+/** @deprecated užšaldyta import'o metu – naudokite rules() */
+export const BENCHMARK_RULES: Rule[] = rules();
 
 /** Apskaičiuoja visus rodiklius; 'na' – nepakanka duomenų (rodiklis praleidžiamas) */
 export function computeBenchmarks(items: QtoItem[]): BenchmarkResult[] {
   const t = computeTotals(items);
-  return BENCHMARK_RULES.map((r) => {
+  return rules().map((r) => {
     const v = r.compute(t);
     if (v === null) {
       return { id: r.id, label: r.label, value: null, unit: r.unit, range: r.range, status: 'na' as const, details: '' };
@@ -110,8 +117,8 @@ export function computeBenchmarks(items: QtoItem[]): BenchmarkResult[] {
       range: r.range,
       status: ok ? ('ok' as const) : ('warn' as const),
       details: ok
-        ? `${fmt(v, 2)} ${r.unit} – tipiniame diapazone (${r.typical}).`
-        : `${fmt(v, 2)} ${r.unit} – UŽ tipinio diapazono (${r.typical}). Patikrinkite mastelius ir apimtis – galima eilinio dydžio klaida.`,
+        ? L({ lt: `${fmt(v, 2)} ${r.unit} – tipiniame diapazone (${r.typical}).`, en: `${fmt(v, 2)} ${r.unit} – within the typical range (${r.typical}).` })
+        : L({ lt: `${fmt(v, 2)} ${r.unit} – UŽ tipinio diapazono (${r.typical}). Patikrinkite mastelius ir apimtis – galima eilinio dydžio klaida.`, en: `${fmt(v, 2)} ${r.unit} – OUTSIDE the typical range (${r.typical}). Check scales and scopes – a possible order-of-magnitude error.` }),
     };
   });
 }

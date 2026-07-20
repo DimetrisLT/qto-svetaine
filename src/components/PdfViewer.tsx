@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch } from 'lucide-react';
-import { CATEGORY_INFO, CATEGORY_ORDER, uid, type ElementCategory, type QtoItem } from '@/types/qto';
+import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
-import { fmt, round } from '@/lib/format';
+import { fmt, fmtQty, round, uLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, type ScannedRow } from '@/lib/ocr/scanSchedule';
 import ScheduleReview from '@/components/ScheduleReview';
@@ -19,6 +19,9 @@ import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
 import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
 import { buildRoomFinishItems } from '@/lib/pdf/roomFinishes';
 import { grayscaleFromCanvas, matchTemplate, cropGray, binarizeDilate } from '@/lib/ocr/templateMatch';
+import { useI18n } from '@/i18n/I18nContext';
+import { L } from '@/i18n/store';
+import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -77,6 +80,8 @@ interface Props {
 }
 
 export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onCalibrate, onDetectScale, items, onItemsChange, locate = null }: Props) {
+  const { t } = useI18n();
+  const units = useUnitSystem();
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(1);
@@ -168,7 +173,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           })));
         } catch { /* sluoksnių nėra arba API nepalaikoma – ignoruojame */ }
       })
-      .catch(() => setLoadError('Nepavyko atidaryti PDF failo. Patikrinkite, ar failas nepažeistas.'));
+      .catch(() => setLoadError(t.pdf.openError));
     return () => { cancelled = true; };
   }, [file]);
 
@@ -391,8 +396,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     setForm({
       kind, pts,
       category: defCat,
-      name: suggested ?? `${CATEGORY_INFO[defCat].lt} (PDF p.${pageNum})`,
-      height: kind === 'length' ? '3' : '',
+      name: suggested ?? `${categoryLabel(defCat)} (${t.pdf.pageShort}${pageNum})`,
+      height: kind === 'length' ? (units === 'imperial' ? '10' : '3') : '',
       thickness: '',
       perArea: '', perVolume: '',
       material: '',
@@ -400,7 +405,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       dimCheck,
       axesZone: axesZoneVal,
       genFinishes: kind === 'area',
-      roomHeight: '2.7',
+      roomHeight: units === 'imperial' ? '9' : '2.7',
       deductOpenings: true,
     });
     setCurrent([]);
@@ -408,10 +413,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   const saveForm = () => {
     if (!form) return;
-    const h = parseFloat(form.height.replace(',', '.'));
-    const t = parseFloat(form.thickness.replace(',', '.'));
-    const pa = parseFloat(form.perArea.replace(',', '.'));
-    const pv = parseFloat(form.perVolume.replace(',', '.'));
+    // Vartotojo įvestis aktyviais vienetais (m arba ft) – canonical visada metrinė
+    const h = inputToMeters(parseFloat(form.height.replace(',', '.')), 'm', units);
+    const th = inputToMeters(parseFloat(form.thickness.replace(',', '.')), 'm', units);
+    const pa = inputToMeters(parseFloat(form.perArea.replace(',', '.')), 'm²', units);
+    const pv = inputToMeters(parseFloat(form.perVolume.replace(',', '.')), 'm³', units);
 
     let length_m: number | undefined;
     let area_m2: number | undefined;
@@ -425,13 +431,13 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       if (!Number.isNaN(h)) {
         area_m2 = round(length_m * h, 3);
         unit = 'm²';
-        if (!Number.isNaN(t)) { volume_m3 = round(area_m2 * t, 3); unit = 'm³'; }
+        if (!Number.isNaN(th)) { volume_m3 = round(area_m2 * th, 3); unit = 'm³'; }
       }
     } else if (form.kind === 'area') {
       const u = polygonArea(form.pts);
       area_m2 = calibrated ? round(u / (unitsPerMeter! * unitsPerMeter!), 3) : 0;
       unit = 'm²';
-      if (!Number.isNaN(t)) { volume_m3 = round(area_m2 * t, 3); unit = 'm³'; }
+      if (!Number.isNaN(th)) { volume_m3 = round(area_m2 * th, 3); unit = 'm³'; }
       // Perimetras – informatyvu visoms ploto pozicijoms, būtina patalpų apdailai
       length_m = round(toMeters(polylineLength(form.pts, true)) ?? 0, 3);
     } else {
@@ -445,11 +451,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       id: uid(),
       source: 'PDF',
       category: form.category,
-      name: form.name || `${CATEGORY_INFO[form.category].lt} (PDF p.${pageNum})`,
+      name: form.name || `${categoryLabel(form.category)} (${t.pdf.pageShort}${pageNum})`,
       material: form.material || undefined,
       length_m,
       height_m: form.kind === 'length' && !Number.isNaN(h) ? h : undefined,
-      thickness_m: !Number.isNaN(t) ? t : undefined,
+      thickness_m: !Number.isNaN(th) ? th : undefined,
       area_m2,
       volume_m3,
       count,
@@ -461,14 +467,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       discipline,
       origin: 'ai',
       note: [
-        !calibrated ? 'Mastelis nekalibruotas – reikšmės sąlyginės' : null,
-        form.axesZone ? `Ašys: ${form.axesZone}` : null,
+        !calibrated ? t.pdf.notCalibrated : null,
+        form.axesZone ? `${L({ lt: 'Ašys', en: 'Grid' })}: ${form.axesZone}` : null,
       ].filter(Boolean).join('; ') || undefined,
     };
     // Patalpos apdaila: grindys + lubos + sienos (su angų atėmimu)
     let extra: QtoItem[] = [];
     if (form.kind === 'area' && form.category === 'room' && form.genFinishes) {
-      const h = parseFloat((form.roomHeight ?? '').replace(',', '.'));
+      const h = inputToMeters(parseFloat((form.roomHeight ?? '').replace(',', '.')), 'm', units);
       extra = buildRoomFinishItems(item, items, {
         heightM: Number.isNaN(h) ? 2.7 : h,
         deductOpenings: form.deductOpenings !== false,
@@ -484,7 +490,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const applyCalibration = () => {
-    const real = parseFloat(calibInput.replace(',', '.'));
+    const real = inputToMeters(parseFloat(calibInput.replace(',', '.')), 'm', units);
     if (calibPts.length === 2 && real > 0) {
       const upm = dist(calibPts[0], calibPts[1]) / real;
       if (scaleSuggestion) {
@@ -579,7 +585,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       const tw = Math.max(6, Math.round(wPt * s));
       const th = Math.max(6, Math.round(hPt * s));
       if (tw > 200 || th > 200) {
-        setMatchError('Šablono sritis per didelė (max ~200 px). Pažymėkite vieną simbolį – pvz., durų ar lango grafiklį.');
+        setMatchError(t.pdf.symTooBig);
         setMatching(false);
         return;
       }
@@ -595,7 +601,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         onProgress: setMatchProgress,
       });
       if (found.length === 0) {
-        setMatchError('Panašių simbolių nerasta. Pabandykite pažymėti tikslesnę sritį (tik simbolio kontūras, be teksto).');
+        setMatchError(t.pdf.symNone);
         setMatching(false);
         return;
       }
@@ -612,7 +618,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       setMatchResults(results);
     } catch (err) {
       console.error(err);
-      setMatchError('Simbolių paieška nepavyko. Bandykite dar kartą su mažesne sritimi.');
+      setMatchError(t.pdf.symFail);
     } finally {
       setMatching(false);
     }
@@ -651,15 +657,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       setScanPreview(c.toDataURL('image/png'));
       const rows = parseScheduleText(text);
       if (rows.length === 0) {
-        setScanError('Pažymėtoje srityje kiekių pozicijų neaptikta. Pabandykite pažymėti tikslesnę lentelės sritį arba įveskite poziciją ranka.');
+        setScanError(t.pdf.ocrNone);
       } else {
         visoRef.current = extractVisoTotals(text);
         setReviewRows(rows);
-        setReviewTitle(`Nuskaityta iš p.${pageNum} – aptikta ${rows.length} poz.`);
+        setReviewTitle(L({ lt: `Nuskaityta iš p.${pageNum} – aptikta ${rows.length} poz.`, en: `Scanned from p.${pageNum} – ${rows.length} rows found` }));
       }
     } catch (err) {
       console.error(err);
-      setScanError('OCR nepavyko (reikalingas interneto ryšys pirmam OCR variklio užkėlimui). Bandykite dar kartą.');
+      setScanError(t.pdf.ocrFail);
     } finally {
       setScanning(false);
     }
@@ -668,7 +674,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const openManualEntry = () => {
     setScanError(null);
     setReviewRows([]);
-    setReviewTitle('Projekto pozicijos įvedimas ranka');
+    setReviewTitle(t.pdf.manualTitle);
   };
 
   const saveReview = (rows: ScannedRow[]) => {
@@ -753,12 +759,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       <div className="min-w-0">
         {/* Įrankių juosta: mobiliajame slenkama horizontaliai */}
         <div className="mb-2 flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
-          {toolBtn('calib', <Ruler className="h-3.5 w-3.5" />, 'Mastelis')}
-          {toolBtn('length', <Spline className="h-3.5 w-3.5" />, 'Ilgis (sienos)')}
-          {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, 'Plotas')}
-          {toolBtn('count', <Hash className="h-3.5 w-3.5" />, 'Skaičiuoti')}
-          {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, 'Simboliai')}
-          {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, 'Žiniaraštis (OCR)')}
+          {toolBtn('calib', <Ruler className="h-3.5 w-3.5" />, t.pdf.tools.calib)}
+          {toolBtn('length', <Spline className="h-3.5 w-3.5" />, t.pdf.tools.length)}
+          {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, t.pdf.tools.area)}
+          {toolBtn('count', <Hash className="h-3.5 w-3.5" />, t.pdf.tools.count)}
+          {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, t.pdf.tools.match)}
+          {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, t.pdf.tools.scan)}
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
@@ -779,7 +785,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 if (n >= 1 && n <= numPages && n !== pageNum) setPageNum(n);
               }}
               className="h-7 w-11 rounded-md border bg-background px-1 text-center text-xs"
-              title="Puslapio numeris (Enter – peršokti)"
+              title={t.pdf.pageNum}
             />
             / {numPages}
           </span>
@@ -795,7 +801,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   layersOpen && 'border-primary',
                 )}
               >
-                <Layers className="h-3.5 w-3.5" /> Sluoksniai ({layers.filter((l) => l.visible).length}/{layers.length})
+                <Layers className="h-3.5 w-3.5" /> {t.pdf.layers} ({layers.filter((l) => l.visible).length}/{layers.length})
               </button>
               {layersOpen && (
                 <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-72 overflow-auto rounded-lg border bg-popover p-1.5 shadow-lg">
@@ -820,10 +826,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           <span className={cn('flex items-center gap-1.5', current.length === 0 && 'invisible')} aria-hidden={current.length === 0}>
             <span className="mx-1 h-5 w-px bg-border" />
             <button onClick={finishCurrent} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-              <Check className="h-3.5 w-3.5" /> Baigti ({current.length})
+              <Check className="h-3.5 w-3.5" /> {t.pdf.finish} ({current.length})
             </button>
             <button onClick={() => setCurrent([])} className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-muted">
-              <X className="h-3.5 w-3.5" /> Valyti
+              <X className="h-3.5 w-3.5" /> {t.pdf.clear}
             </button>
           </span>
         </div>
@@ -831,42 +837,42 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {!calibrated && scaleSuggestion && (
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
             <span>
-              📐 Aptikta: <b>{scaleSuggestion.paperName}</b> lapas, mastelis <b>1:{scaleSuggestion.scale}</b>.
+              {t.pdf.detected} <b>{scaleSuggestion.paperName}</b> {t.pdf.sheetWord} <b>1:{scaleSuggestion.scale}</b>.
             </span>
             <button
               onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
               className="rounded-md bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700"
             >
-              Taikyti šį mastelį
+              {t.pdf.applyScale}
             </button>
-            <span className="text-emerald-800/70 dark:text-emerald-300/70">arba sukalibruokite ranka („Mastelis“ + du žinomi taškai)</span>
+            <span className="text-emerald-800/70 dark:text-emerald-300/70">{t.pdf.calibManual}</span>
           </div>
         )}
         {!calibrated && !scaleSuggestion && (dimScale || ocrScale) && (
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
             {ocrScale ? (
-              <span>🔍 Iš skenuoto lapo nuskaityta: mastelis <b>1:{ocrScale.scale}</b> ({ocrScale.paperName}, OCR).</span>
+              <span>{t.pdf.scaleFromScan} <b>1:{ocrScale.scale}</b> ({ocrScale.paperName}, OCR).</span>
             ) : dimScale && (
               <span>
-                📏 Mastelis pagal matmenų grandines: <b>~1:{Math.round((72 / 25.4 * 1000) / dimScale.unitsPerMeter)}</b>
-                {' '}({dimScale.evidence} grand., pvz., {dimScale.sample}).
+                {t.pdf.dimScale} <b>~1:{Math.round((72 / 25.4 * 1000) / dimScale.unitsPerMeter)}</b>
+                {' '}({dimScale.evidence} {t.pdf.dimScaleOf} {dimScale.sample}).
               </span>
             )}
             <button
               onClick={() => { onCalibrate(ocrScale ? ocrScale.unitsPerMeter : dimScale!.unitsPerMeter); setCalibDeviation(null); }}
               className="rounded-md bg-sky-600 px-2.5 py-1 font-semibold text-white hover:bg-sky-700"
             >
-              Taikyti šį mastelį
+              {t.pdf.applyScale}
             </button>
-            <span className="text-sky-800/70 dark:text-sky-300/70">patikrinkite su vienu žinomu atstumu</span>
+            <span className="text-sky-800/70 dark:text-sky-300/70">{t.pdf.calibCheck}</span>
           </div>
         )}
         {!calibrated && !scaleSuggestion && (
           <div className="mb-2 space-y-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            <p>⚠️ Mastelis nesukalibruotas: pasirinkite „Mastelis“, spustelėkite du žinomus taškus (pvz., ašių sankirtas) ir įveskite realų atstumą metrais.</p>
+            <p>{t.pdf.calibWarn}</p>
             {paperOnlyName && (
               <p className="flex flex-wrap items-center gap-1.5">
-                <span>Lapas panašus į <b>{paperOnlyName}</b>. Apytikslis mastelis:</span>
+                <span>{t.pdf.similarTo} <b>{paperOnlyName}</b>. {t.pdf.approxScale}</span>
                 {[50, 100, 200].map((s) => (
                   <button
                     key={s}
@@ -879,19 +885,19 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                     1:{s}
                   </button>
                 ))}
-                <span className="text-amber-800/70 dark:text-amber-300/70">– tikslumui būtinai patikrinkite vienu žinomu matmeniu (brėžinys gali būti spausdintas „talpinant į lapą“)</span>
+                <span className="text-amber-800/70 dark:text-amber-300/70">{t.pdf.calibFitNote}</span>
               </p>
             )}
           </div>
         )}
         {calibrated && calibDeviation !== null && scaleSuggestion && (
           <p className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            ⚠️ Rankinė kalibracija nukrypsta {fmt(calibDeviation, 1)} % nuo brėžinyje nurodyto mastelio 1:{scaleSuggestion.scale} ({scaleSuggestion.paperName}). Patikrinkite etaloną arba{' '}
+            {t.pdf.devA} {fmt(calibDeviation, 1)} % {t.pdf.devB} 1:{scaleSuggestion.scale} ({scaleSuggestion.paperName}). {t.pdf.devCheck}{' '}
             <button
               onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter); setCalibDeviation(null); }}
               className="font-semibold underline"
             >
-              taikykite aptiktą mastelį
+              {t.pdf.devApply}
             </button>.
           </p>
         )}
@@ -910,22 +916,22 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             <svg width={viewSize.w} height={viewSize.h} className="absolute left-0 top-0">
               {/* Kalibravimo atkarpa */}
               {calibPts.length > 0 && renderShape(calibPts, '#f97316', 'calib', 'length',
-                calibPts.length === 2 && calibrated ? `${fmt(dist(calibPts[0], calibPts[1]) / unitsPerMeter!)} m (etalonas)` : 'etalonas')}
+                calibPts.length === 2 && calibrated ? `${fmtQty(dist(calibPts[0], calibPts[1]) / unitsPerMeter!, 'm', 2, units)} ${uLabel('m', units)} (${t.pdf.ref})` : t.pdf.ref)}
               {/* Išsaugotos figūros */}
               {shapes.map((s) => {
                 const color = CATEGORY_INFO[s.category].color;
                 const label = s.pdfKind === 'length' && s.length_m !== undefined
-                  ? `${fmt(s.length_m)} m`
+                  ? `${fmtQty(s.length_m, 'm', 2, units)} ${uLabel('m', units)}`
                   : s.pdfKind === 'area' && s.area_m2 !== undefined
-                    ? `${fmt(s.area_m2)} m²`
-                    : s.pdfKind === 'count' ? `${s.count} vnt.` : undefined;
+                    ? `${fmtQty(s.area_m2, 'm²', 2, units)} ${uLabel('m²', units)}`
+                    : s.pdfKind === 'count' ? `${s.count} ${t.pdf.pcs}` : undefined;
                 return renderShape(s.pdfPoints!, color, s.id, s.pdfKind ?? 'length', label);
               })}
               {/* Dabartinė (daroma) figūra */}
               {current.length > 0 && renderShape(current, '#0ea5e9', 'current', tool === 'area' ? 'area' : tool === 'count' ? 'count' : 'length',
-                tool === 'length' && liveLength !== undefined ? `${fmt(liveLength)} m`
-                  : tool === 'area' && liveArea !== undefined ? `${fmt(liveArea)} m²`
-                  : tool === 'count' ? `${current.length} vnt.` : undefined)}
+                tool === 'length' && liveLength !== undefined ? `${fmtQty(liveLength, 'm', 2, units)} ${uLabel('m', units)}`
+                  : tool === 'area' && liveArea !== undefined ? `${fmtQty(liveArea, 'm²', 2, units)} ${uLabel('m²', units)}`
+                  : tool === 'count' ? `${current.length} ${t.pdf.pcs}` : undefined)}
               {/* Prisirišimo (snapping) indikatorius */}
               {snapIndicator && (
                 <g pointerEvents="none">
@@ -989,13 +995,13 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {/* OCR būsena ir žiniaraščio peržiūra */}
         {tool === 'scan' && !scanning && !reviewRows && (
           <div className="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs text-violet-900 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200">
-            Nuspauskite ir užtempkite rėmelį ant <b>žiniaraščio / eksplikacijos lentelės</b> brėžinyje – programa nuskaitys pozicijas (pavadinimas, vnt., kiekis) ir leis patikrinti prieš įtraukiant.
+            {t.pdf.scanHintA} <b>{t.pdf.ocrTable}</b> {t.pdf.scanHintB}
           </div>
         )}
         {scanning && (
           <div className="rounded-xl border p-3 text-sm">
-            <p className="font-medium">Skaitoma (OCR)…</p>
-            <p className="text-xs text-muted-foreground">Pirmasis kartas gali užtrukti ~10–20 s (kraunamas OCR variklis).</p>
+            <p className="font-medium">{t.pdf.scanning}</p>
+            <p className="text-xs text-muted-foreground">{t.pdf.ocrFirst}</p>
           </div>
         )}
         {scanError && (
@@ -1005,7 +1011,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             </p>
             {scanPreview && (
               <div className="rounded-lg border p-1.5">
-                <p className="mb-1 text-[10px] text-muted-foreground">Nuskaityta sritis:</p>
+                <p className="mb-1 text-[10px] text-muted-foreground">{t.pdf.scannedArea}</p>
                 <img src={scanPreview} alt="OCR sritis" className="w-full rounded" />
               </div>
             )}
@@ -1022,12 +1028,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {/* Simbolių paieška (#1) */}
         {tool === 'match' && !matching && !matchResults && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            Nuspauskite ir užtempkite rėmelį ant <b>vieno simbolio</b> (durų, lango, gaubto, šviestuvo grafiklio) – programa ras visus identiškus puslapyje ir leis patikrinti prieš skaičiuojant.
+            {t.pdf.matchHintA} <b>{t.pdf.oneSymbol}</b> {t.pdf.matchHintB}
           </div>
         )}
         {matching && (
           <div className="rounded-xl border p-3 text-sm">
-            <p className="font-medium">Ieškoma simbolių… {Math.round(matchProgress * 100)} %</p>
+            <p className="font-medium">{t.pdf.matching} {Math.round(matchProgress * 100)} %</p>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-amber-500 transition-all" style={{ width: `${matchProgress * 100}%` }} />
             </div>
@@ -1041,12 +1047,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {matchResults && (
           <div className="rounded-xl border p-3">
             <div className="mb-2 flex items-center gap-2">
-              {matchThumb && <img src={matchThumb} alt="Šablonas" className="h-10 rounded border" />}
+              {matchThumb && <img src={matchThumb} alt={t.pdf.template} className="h-10 rounded border" />}
               <div>
                 <p className="text-sm font-semibold">
-                  Rasta {matchResults.filter((m) => !m.excluded).length} iš {matchResults.length}
+                  {t.pdf.found} {matchResults.filter((m) => !m.excluded).length} {t.pdf.foundOf} {matchResults.length}
                 </p>
-                <p className="text-[11px] text-muted-foreground">Spauskite miniatiūrą, kad išmestumėte klaidingą</p>
+                <p className="text-[11px] text-muted-foreground">{t.pdf.thumbRemove}</p>
               </div>
             </div>
             <div className="mb-3 grid max-h-56 grid-cols-4 gap-1.5 overflow-auto">
@@ -1055,7 +1061,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   key={i}
                   onClick={() => setMatchResults((rs) => rs?.map((x, j) => (j === i ? { ...x, excluded: !x.excluded } : x)) ?? null)}
                   className={`relative overflow-hidden rounded border ${m.excluded ? 'opacity-40 grayscale' : 'border-amber-400'}`}
-                  title={`Panašumas ${(m.score * 100).toFixed(0)} %`}
+                  title={`${t.pdf.similarity} ${(m.score * 100).toFixed(0)} %`}
                 >
                   <img src={m.thumb} alt={`atitikmuo ${i + 1}`} className="w-full" />
                   {m.excluded && <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-red-600">✕</span>}
@@ -1068,7 +1074,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 disabled={matchResults.every((m) => m.excluded)}
                 className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
               >
-                Įtraukti {matchResults.filter((m) => !m.excluded).length} vnt.
+                {t.pdf.addNPcs} {matchResults.filter((m) => !m.excluded).length} {t.pdf.pcs}
               </button>
               <button
                 onClick={() => { setMatchResults(null); setMatchThumb(null); }}
@@ -1084,17 +1090,17 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             onClick={openManualEntry}
             className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary"
           >
-            <ClipboardPlus className="h-3.5 w-3.5" /> Įvesti projekto poziciją ranka
+            <ClipboardPlus className="h-3.5 w-3.5" /> {t.pdf.manualEntry}
           </button>
         )}
         {/* Kalibravimo forma */}
         {tool === 'calib' && (
           <div className="rounded-xl border p-3 space-y-2">
-            <p className="text-sm font-semibold">Mastelio kalibravimas</p>
+            <p className="text-sm font-semibold">{t.pdf.calibTitle}</p>
             <p className="text-xs text-muted-foreground">
               {calibPts.length < 2
-                ? `Spustelėkite ${calibPts.length === 0 ? 'pirmą' : 'antrą'} etaloninio atstumo tašką brėžinyje.`
-                : 'Įveskite realų atstumą tarp pažymėtų taškų (metrais):'}
+                ? `${t.pdf.calibClickA} ${calibPts.length === 0 ? t.pdf.calibFirst : t.pdf.calibSecond} ${t.pdf.calibClickB}`
+                : t.pdf.calibEnter}
             </p>
             {calibPts.length === 2 && (
               <div className="flex gap-1.5">
@@ -1109,10 +1115,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               </div>
             )}
             {calibrated && (
-              <p className="text-xs text-emerald-600">✓ Aktyvus kalibravimas: {fmt(unitsPerMeter!, 1)} vnt./m</p>
+              <p className="text-xs text-emerald-600">{t.pdf.calibActive} {fmt(unitsPerMeter!, 1)} {t.pdf.upm}</p>
             )}
             {calibrated && (
-              <button onClick={resetCalibration} className="text-xs text-muted-foreground underline">Atšaukti kalibravimą</button>
+              <button onClick={resetCalibration} className="text-xs text-muted-foreground underline">{t.pdf.calibReset}</button>
             )}
           </div>
         )}
@@ -1121,37 +1127,37 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {form && (
           <div className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
             <p className="text-sm font-semibold">
-              {form.kind === 'length' ? 'Linijinis matavimas' : form.kind === 'area' ? 'Ploto matavimas' : `Skaičiavimas (${form.pts.length} vnt.)`}
+              {form.kind === 'length' ? t.pdf.formLength : form.kind === 'area' ? t.pdf.formArea : `${t.pdf.formCount} (${form.pts.length} ${t.pdf.pcs})`}
             </p>
             <label className="block text-xs">
-              Kategorija
+              {t.pdf.fCategory}
               <select
                 value={form.category}
                 onChange={(e) => {
                   const cat = e.target.value as ElementCategory;
-                  const autoName = `${CATEGORY_INFO[form.category].lt} (PDF p.${pageNum})`;
+                  const autoName = `${categoryLabel(form.category)} (${t.pdf.pageShort}${pageNum})`;
                   setForm({
                     ...form,
                     category: cat,
-                    name: form.name === autoName ? `${CATEGORY_INFO[cat].lt} (PDF p.${pageNum})` : form.name,
+                    name: form.name === autoName ? `${categoryLabel(cat)} (${t.pdf.pageShort}${pageNum})` : form.name,
                   });
                 }}
                 className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
               >
-                {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_INFO[c].lt}</option>)}
+                {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
               </select>
             </label>
             <label className="block text-xs">
-              Pavadinimas
+              {t.pdf.fName}
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, nameSuggested: false })}
                 className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
               {form.nameSuggested && (
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">✨ pasiūlyta pagal artimiausią žymą brėžinyje – galite redaguoti</span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{t.pdf.nameSuggested}</span>
               )}
             </label>
             {form.axesZone && (
               <p className="rounded-md bg-sky-50 px-2 py-1.5 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-200">
-                ⊹ Ašių zona: <b>{form.axesZone}</b> – bus įrašyta į pastabą
+                {t.pdf.axesZone} <b>{form.axesZone}</b> {t.pdf.axesNote}
               </p>
             )}
             {form.dimCheck && (
@@ -1162,13 +1168,13 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   : 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
               )}>
                 {form.dimCheck.ok
-                  ? `✓ Sutampa su matmenų grandine: ${form.dimCheck.dimMm} mm`
-                  : `⚠ Artimiausia grandinė: ${form.dimCheck.dimMm} mm – išmatuota kitaip, patikrinkite mastelį arba taškus`}
+                  ? `${t.pdf.dimOk} ${form.dimCheck.dimMm} mm`
+                  : `${t.pdf.dimWarn} ${form.dimCheck.dimMm} mm ${t.pdf.dimWarnSuffix}`}
               </p>
             )}
             {form.kind === 'length' && (
               <label className="block text-xs">
-                Aukštis (m) – sienoms
+                {t.pdf.fHeight} ({uLabel('m', units)})
                 <input value={form.height} onChange={(e) => setForm({ ...form, height: e.target.value })}
                   inputMode="decimal" className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
               </label>
@@ -1181,12 +1187,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                     checked={form.genFinishes !== false}
                     onChange={(e) => setForm({ ...form, genFinishes: e.target.checked })}
                   />
-                  Generuoti apdailos pozicijas (grindys, lubos, sienos)
+                  {t.pdf.genFinishes}
                 </label>
                 {form.genFinishes !== false && (
                   <div className="mt-2 flex items-center gap-3">
                     <label className="text-xs text-violet-900 dark:text-violet-200">
-                      Aukštis (m)
+                      {t.pdf.roomHeight} ({uLabel('m', units)})
                       <input
                         value={form.roomHeight ?? '2.7'}
                         onChange={(e) => setForm({ ...form, roomHeight: e.target.value })}
@@ -1200,7 +1206,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                         checked={form.deductOpenings !== false}
                         onChange={(e) => setForm({ ...form, deductOpenings: e.target.checked })}
                       />
-                      Atimti angas (≥0,5 m²)
+                      {t.pdf.deductOpenings}
                     </label>
                   </div>
                 )}
@@ -1208,47 +1214,47 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             )}
             {(form.kind === 'length' || form.kind === 'area') && (
               <label className="block text-xs">
-                Storis (m) – tūriui
+                {t.pdf.fThickness} ({uLabel('m', units)})
                 <input value={form.thickness} onChange={(e) => setForm({ ...form, thickness: e.target.value })}
-                  inputMode="decimal" placeholder="neprivaloma"
+                  inputMode="decimal" placeholder={t.pdf.optional}
                   className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
               </label>
             )}
             {form.kind === 'count' && (
               <>
                 <label className="block text-xs">
-                  Plotas vienam vnt. (m²)
+                  {t.pdf.fPerArea} ({uLabel('m²', units)})
                   <input value={form.perArea} onChange={(e) => setForm({ ...form, perArea: e.target.value })}
-                    inputMode="decimal" placeholder="neprivaloma"
+                    inputMode="decimal" placeholder={t.pdf.optional}
                     className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
                 </label>
                 <label className="block text-xs">
-                  Tūris vienam vnt. (m³)
+                  {t.pdf.fPerVolume} ({uLabel('m³', units)})
                   <input value={form.perVolume} onChange={(e) => setForm({ ...form, perVolume: e.target.value })}
-                    inputMode="decimal" placeholder="neprivaloma"
+                    inputMode="decimal" placeholder={t.pdf.optional}
                     className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
                 </label>
               </>
             )}
             <label className="block text-xs">
-              Medžiaga
+              {t.pdf.fMaterial}
               <input value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })}
-                placeholder="pvz., Mūras, gelžbetonis"
+                placeholder={t.pdf.materialPh}
                 className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm" />
             </label>
             <div className="flex gap-1.5 pt-1">
-              <button onClick={saveForm} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">Įtraukti</button>
-              <button onClick={() => setForm(null)} className="rounded-md border px-3 py-1.5 text-sm">Atšaukti</button>
+              <button onClick={saveForm} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">{t.pdf.add}</button>
+              <button onClick={() => setForm(null)} className="rounded-md border px-3 py-1.5 text-sm">{t.pdf.cancel}</button>
             </div>
           </div>
         )}
 
         {/* Matavimų sąrašas */}
         <div className="rounded-xl border p-3">
-          <p className="mb-2 text-sm font-semibold">Matavimai ({items.length})</p>
+          <p className="mb-2 text-sm font-semibold">{t.pdf.measurements} ({items.length})</p>
           {items.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Pasirinkite įrankį („Ilgis“, „Plotas“ arba „Skaičiuoti“), žymėkite brėžinyje, spauskite „Baigti“ ir užpildykite formą.
+              {t.pdf.emptyHint}
             </p>
           )}
           <ul className="space-y-1.5">
@@ -1258,10 +1264,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{i.name}</p>
                   <p className="text-muted-foreground tabular-nums">
-                    {i.length_m !== undefined && `${fmt(i.length_m)} m · `}
-                    {i.area_m2 !== undefined && `${fmt(i.area_m2)} m² · `}
-                    {i.volume_m3 !== undefined && `${fmt(i.volume_m3)} m³ · `}
-                    {i.count} vnt. · p.{i.pdfPage}
+                    {i.length_m !== undefined && `${fmtQty(i.length_m, 'm', 2, units)} ${uLabel('m', units)} · `}
+                    {i.area_m2 !== undefined && `${fmtQty(i.area_m2, 'm²', 2, units)} ${uLabel('m²', units)} · `}
+                    {i.volume_m3 !== undefined && `${fmtQty(i.volume_m3, 'm³', 2, units)} ${uLabel('m³', units)} · `}
+                    {i.count} {t.pdf.pcs} · p.{i.pdfPage}
                   </p>
                 </div>
                 <button onClick={() => removeItem(i.id)} className="text-muted-foreground hover:text-destructive">

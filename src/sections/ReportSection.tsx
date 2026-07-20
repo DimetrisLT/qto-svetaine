@@ -11,6 +11,7 @@ import CarbonCard from '@/components/CarbonCard';
 import { runSelfChecks } from '@/lib/selfCheck';
 import { buildCsv, exportToExcel } from '@/lib/exportExcel';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
+import { useI18n } from '@/i18n/I18nContext';
 import { useState } from 'react';
 
 interface Props {
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAddItems, onUpdateItem, onLocateItem, onToggleVerify }: Props) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<QtoItem | null>(null);
   const [showReport, setShowReport] = useState(false);
@@ -63,21 +65,21 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
           disabled={items.length === 0}
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
         >
-          <FileSpreadsheet className="h-4 w-4" /> Atsisiųsti Excel (XLSX)
+          <FileSpreadsheet className="h-4 w-4" /> {t.report.excel}
         </button>
         <button
           onClick={copyCsv}
           disabled={items.length === 0}
           className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-40"
         >
-          <ClipboardCopy className="h-4 w-4" /> {copied ? '✓ Nukopijuota!' : 'Kopijuoti CSV'}
+          <ClipboardCopy className="h-4 w-4" /> {copied ? t.report.copied : t.report.copyCsv}
         </button>
         <button
           onClick={() => setShowReport(true)}
           disabled={items.length === 0}
           className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-40"
         >
-          <FileText className="h-4 w-4" /> PDF ataskaita
+          <FileText className="h-4 w-4" /> {t.report.printPdf}
         </button>
       </div>
 
@@ -95,20 +97,20 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
       />
 
       <div>
-        <h3 className="mb-1 text-lg font-semibold">Darbų kiekių žiniaraštis</h3>
+        <h3 className="mb-1 text-lg font-semibold">{t.report.zinTitle}</h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Kiekiai iš visų šaltinių (IFC, PDF dalys, DXF) sugrupuoti pagal darbų grupes – pagrindas detaliosioms sąmatoms.
+          {t.report.zinSub}
         </p>
         <ZiniarastisTable items={items} />
       </div>
 
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-3">
-          <h3 className="text-lg font-semibold">Kiekių suvestinė (detaliai)</h3>
+          <h3 className="text-lg font-semibold">{t.report.detailTitle}</h3>
           {onToggleVerify && items.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className={verifiedCount === items.length ? 'font-medium text-emerald-700 dark:text-emerald-400' : ''}>
-                ✓ patikrinta {verifiedCount}/{items.length}
+                {t.report.verifiedN} {verifiedCount}/{items.length}
               </span>
               <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                 <span
@@ -121,9 +123,9 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
                 onChange={(e) => setVerifyFilter(e.target.value as 'all' | 'todo' | 'done')}
                 className="h-7 rounded-md border bg-background px-1.5 text-xs"
               >
-                <option value="all">Visos</option>
-                <option value="todo">Tik nepatikrintos</option>
-                <option value="done">Tik patikrintos</option>
+                <option value="all">{t.report.filterAll}</option>
+                <option value="todo">{t.report.filterUnverified}</option>
+                <option value="done">{t.report.filterVerified}</option>
               </select>
             </div>
           )}

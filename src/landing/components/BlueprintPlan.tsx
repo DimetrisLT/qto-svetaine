@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useI18n } from '@/i18n/I18nContext';
 import { motion, useReducedMotion } from 'framer-motion';
 
 interface Pt { x: number; y: number }
@@ -48,6 +49,7 @@ const path = (pts: Pt[], close = false) =>
 /** Interaktyvus brėžinys: nusipiešia pats, kursorius prisiriša prie kampų,
  *  o nejudinant pelės – kartojasi automatinė matavimo demonstracija */
 export default function BlueprintPlan() {
+  const { t } = useI18n();
   const ref = useRef<SVGSVGElement>(null);
   const [snap, setSnap] = useState<Pt | null>(null);
   const reduced = useReducedMotion();
@@ -195,7 +197,7 @@ export default function BlueprintPlan() {
             animate={{ opacity: [0, 0, 1, 1, 0] }}
             transition={{ ...loop, times: T.label }}
           >
-            4,90 m
+            {t.hero.demoDim}
           </motion.text>
           {/* Žiniaraščio eilutės čipsas */}
           <motion.g
@@ -204,7 +206,7 @@ export default function BlueprintPlan() {
             transition={{ ...loop, times: T.chip }}
           >
             <rect x={812} y={104} width={368} height={46} rx={10} fill="#0a1628" stroke="#34d399" strokeWidth={1.5} />
-            <text x={830} y={133} fontSize={17} fill="#34d399" className="font-dim">03.1 Sienos · 4,90 m ✓</text>
+            <text x={830} y={133} fontSize={17} fill="#34d399" className="font-dim">{t.hero.demoChip}</text>
           </motion.g>
           {/* Paspaudimo pulsai ties abiem taškais */}
           <motion.circle cx={640} cy={500} fill="none" stroke="#22d3ee" strokeWidth={3}

@@ -10,6 +10,8 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { trpc } from '@/providers/trpc';
 import ThemeToggle from '@/components/ThemeToggle';
+import UnitToggle from '@/components/UnitToggle';
+import { LangToggle, useI18n } from '@/i18n/I18nContext';
 
 // Sunkiosios bibliotekos (web-ifc, three, pdfjs) užkraunamos tik pagal poreikį
 const IfcSection = lazy(() => import('@/sections/IfcSection'));
@@ -26,6 +28,7 @@ const EMPTY_META: Record<SourceType, SourceMeta> = {
 };
 
 export default function ToolPage() {
+  const { t, locale } = useI18n();
   const [tab, setTab] = useState<Tab>('ifc');
   // „Rodyti brėžinyje“: žiniaraščio pozicija → PDF failas/puslapis/taškai
   const [locateTarget, setLocateTarget] = useState<{ pdfFile: string; pdfPage: number; points: { x: number; y: number }[]; ts: number } | null>(null);
@@ -75,11 +78,11 @@ export default function ToolPage() {
       utils.projects.list.invalidate();
     };
     if (cloudId && cloudName) {
-      cloudUpdate.mutate({ id: cloudId, name: cloudName, data, itemCount }, { onSuccess: () => done('✓ Projektas atnaujintas debesyje') });
+      cloudUpdate.mutate({ id: cloudId, name: cloudName, data, itemCount }, { onSuccess: () => done(t.app.cloudUpdated) });
     } else {
-      const name = window.prompt('Projekto pavadinimas:', cloudName ?? `Projektas ${new Date().toLocaleDateString('lt-LT')}`);
+      const name = window.prompt(t.app.cloudPrompt, cloudName ?? `Project ${new Date().toLocaleDateString(locale === 'lt' ? 'lt-LT' : 'en-US')}`);
       if (!name) return;
-      cloudCreate.mutate({ name, data, itemCount }, { onSuccess: () => { setCloudName(name); done('✓ Projektas įrašytas į paskyrą'); } });
+      cloudCreate.mutate({ name, data, itemCount }, { onSuccess: () => { setCloudName(name); done(t.app.cloudSaved); } });
     }
   };
 
@@ -207,30 +210,32 @@ export default function ToolPage() {
   const total = counts.IFC + counts.PDF + counts.DXF;
 
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; badge?: number }> = [
-    { id: 'ifc', label: 'IFC modelis', icon: <Building2 className="h-4 w-4" />, badge: counts.IFC },
-    { id: 'pdf', label: 'PDF brėžinys', icon: <FileText className="h-4 w-4" />, badge: counts.PDF },
-    { id: 'dxf', label: 'DXF brėžinys', icon: <Layers3 className="h-4 w-4" />, badge: counts.DXF },
-    { id: 'report', label: 'Ataskaita', icon: <ClipboardList className="h-4 w-4" />, badge: total },
+    { id: 'ifc', label: t.app.tabs.ifc, icon: <Building2 className="h-4 w-4" />, badge: counts.IFC },
+    { id: 'pdf', label: t.app.tabs.pdf, icon: <FileText className="h-4 w-4" />, badge: counts.PDF },
+    { id: 'dxf', label: t.app.tabs.dxf, icon: <Layers3 className="h-4 w-4" />, badge: counts.DXF },
+    { id: 'report', label: t.app.tabs.report, icon: <ClipboardList className="h-4 w-4" />, badge: total },
   ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b">
-        <div className="mx-auto flex max-w-7xl items-center gap-2.5 px-4 py-3 sm:gap-3 sm:py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2.5 px-4 py-3 sm:flex-nowrap sm:gap-3 sm:py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground sm:h-10 sm:w-10">
             <Building2 className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-base font-bold leading-tight sm:text-lg">QTO – Statybos kiekių surinkimas</h1>
-            <p className="hidden text-xs text-muted-foreground sm:block">IFC · PDF · DXF → kiekiai, savikontrolė, Excel</p>
+            <h1 className="truncate text-base font-bold leading-tight sm:text-lg">{t.app.title}</h1>
+            <p className="hidden text-xs text-muted-foreground sm:block">{t.app.subtitle}</p>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <UnitToggle />
+            <LangToggle />
             <ThemeToggle />
             <span className={cn('flex items-center gap-0.5', histTick >= 0 && '')}>
               <button
                 onClick={undo}
                 disabled={undoRef.current.length === 0}
-                title="Atšaukti (Ctrl+Z)"
+                title={t.app.undo}
                 className="flex items-center rounded-lg border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
               >
                 <Undo2 className="h-3.5 w-3.5" />
@@ -238,54 +243,54 @@ export default function ToolPage() {
               <button
                 onClick={redo}
                 disabled={redoRef.current.length === 0}
-                title="Grąžinti (Ctrl+Y)"
+                title={t.app.redo}
                 className="flex items-center rounded-lg border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
               >
                 <Redo2 className="h-3.5 w-3.5" />
               </button>
             </span>
             {cloudFlash && <span className="mr-1 text-xs font-medium text-emerald-600">{cloudFlash}</span>}
-            {cloudName && <span className="mr-1 hidden max-w-[180px] truncate text-xs text-muted-foreground sm:inline" title="Atidarytas iš portalo">☁ {cloudName}</span>}
+            {cloudName && <span className="mr-1 hidden max-w-[180px] truncate text-xs text-muted-foreground sm:inline" title={t.app.cloudOpenTitle}>☁ {cloudName}</span>}
             {isAuthenticated ? (
               <>
                 <button
                   onClick={handleCloudSave}
                   disabled={cloudCreate.isPending || cloudUpdate.isPending}
-                  title="Įrašyti projektą į paskyrą (debesį)"
+                  title={t.app.cloudSaveTitle}
                   className="flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
-                  <CloudUpload className="h-3.5 w-3.5" /> <span className="hidden md:inline">{cloudId && cloudName ? 'Atnaujinti' : 'Įrašyti į paskyrą'}</span>
+                  <CloudUpload className="h-3.5 w-3.5" /> <span className="hidden md:inline">{cloudId && cloudName ? t.app.cloudUpdate : t.app.cloudSave}</span>
                 </button>
                 <Link
                   to="/portal"
-                  title="Mano projektai (portalas)"
+                  title={t.app.portalTitle}
                   className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
-                  <LayoutGrid className="h-3.5 w-3.5" /> <span className="hidden md:inline">Portalas</span>
+                  <LayoutGrid className="h-3.5 w-3.5" /> <span className="hidden md:inline">{t.app.portal}</span>
                 </Link>
               </>
             ) : (
               <Link
                 to="/login"
-                title="Prisijungti – projektų saugojimas debesyje"
+                title={t.app.loginTitle}
                 className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
-                <LogIn className="h-3.5 w-3.5" /> <span className="hidden md:inline">Prisijungti</span>
+                <LogIn className="h-3.5 w-3.5" /> <span className="hidden md:inline">{t.app.login}</span>
               </Link>
             )}
             <button
               onClick={handleExportJson}
-              title="Atsisiųsti projektą JSON failu (pozicijos + kalibracijos)"
+              title={t.app.projectTitle}
               className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
             >
-              <Download className="h-3.5 w-3.5" /> <span className="hidden md:inline">Projektas</span>
+              <Download className="h-3.5 w-3.5" /> <span className="hidden md:inline">{t.app.project}</span>
             </button>
             <button
               onClick={() => importInputRef.current?.click()}
-              title="Atidaryti anksčiau išsaugotą projektą (JSON)"
+              title={t.app.openTitle}
               className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
             >
-              <Upload className="h-3.5 w-3.5" /> <span className="hidden md:inline">Atidaryti</span>
+              <Upload className="h-3.5 w-3.5" /> <span className="hidden md:inline">{t.app.open}</span>
             </button>
             <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJson} />
           </div>
@@ -297,21 +302,21 @@ export default function ToolPage() {
           <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3">
             <History className="h-4 w-4 shrink-0 text-primary" />
             <p className="text-sm">
-              Rastas automatiškai išsaugotas darbas: <strong>{totalItems(restoredOffer)}</strong> pozicijos,
-              išsaugota {formatSavedAt(restoredOffer.savedAt)}.
+              {t.app.restoredA} <strong>{totalItems(restoredOffer)}</strong> {t.app.restoredB}{' '}
+              {formatSavedAt(restoredOffer.savedAt)}.
             </p>
             <div className="ml-auto flex gap-2">
               <button
                 onClick={handleRestore}
                 className="rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
               >
-                Tęsti projektą
+                {t.app.restore}
               </button>
               <button
                 onClick={handleStartNew}
                 className="rounded-lg border px-3.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
-                Pradėti naujai
+                {t.app.startNew}
               </button>
             </div>
           </div>
@@ -338,7 +343,7 @@ export default function ToolPage() {
         </nav>
 
         <main>
-          <Suspense fallback={<p className="rounded-xl border p-6 text-sm text-muted-foreground">Kraunama…</p>}>
+          <Suspense fallback={<p className="rounded-xl border p-6 text-sm text-muted-foreground">{t.app.loading}</p>}>
           {/* Sekcijas laikome prijungtas (tik pasleptas) – kitaip perjungus skirtuką
               būtų prarandami įkelti PDF failai ir IFC/DXF būsena */}
           <div className={tab === 'ifc' ? '' : 'hidden'}>
@@ -377,7 +382,7 @@ export default function ToolPage() {
         </main>
 
         <footer className="mt-10 border-t pt-4 pb-8 text-center text-xs text-muted-foreground">
-          Visi skaičiavimai atliekami jūsų naršyklėje – failai niekur nesiunčiami.
+          {t.app.footer}
         </footer>
       </div>
     </div>

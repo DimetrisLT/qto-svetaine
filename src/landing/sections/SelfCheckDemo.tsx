@@ -2,23 +2,13 @@ import { useEffect, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { useRef } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { useI18n } from '@/i18n/I18nContext';
 
-interface Check {
-  label: string;
-  status: 'ok' | 'warn';
-  details: string;
-}
 
-const CHECKS: Check[] = [
-  { label: 'PDF mastelio sutapimas', status: 'ok', details: 'Kalibracija sutampa su brėžinyje nurodytu masteliu (±2 %).' },
-  { label: 'Skaičiavimo sutikrinimas su žiniaraščiu', status: 'ok', details: 'Vnt. kiekiai sutampa: pamatų elementai 36 vnt.' },
-  { label: 'IFC tūrių kryžminis patikrinimas', status: 'ok', details: 'Deklaruoti tūriai sutampa su geometriniais (±20 %).' },
-  { label: 'Plotų persidengimas (dvigubas skaičiavimas?)', status: 'warn', details: '2 poros plotų persidengia >10 % — patikrinkite, ar neskačiuojate dukart.' },
-  { label: 'Kiekiai dubliuojasi tarp projekto dalių', status: 'warn', details: 'Sienos: A 84,2 m ≈ SK 83,9 m — palikite tik vieną šaltinį.' },
-  { label: 'Medžiagų žymos', status: 'ok', details: 'Betonas C25/30, XC2 nurodytas visoms pozicijoms.' },
-];
 
 export default function SelfCheckDemo() {
+  const { t } = useI18n();
+  const CHECKS = t.sc.checks;
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: '-120px' });
   const [done, setDone] = useState(0);
@@ -45,20 +35,16 @@ export default function SelfCheckDemo() {
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.6 }}
         >
-          <p className="font-dim text-xs uppercase tracking-[0.25em] text-sky-400">/ 03 — savikontrolė</p>
+          <p className="font-dim text-xs uppercase tracking-[0.25em] text-sky-400">{t.sc.kicker}</p>
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-            Programa tikrina save.{' '}
-            <span className="text-muted-foreground">Kol nepataisėte jūs.</span>
+            {t.sc.titleA}{' '}
+            <span className="text-muted-foreground">{t.sc.titleB}</span>
           </h2>
-          <p className="mt-5 max-w-lg leading-relaxed text-muted-foreground">
-            Brangiausios sąmatų klaidos — praleistos arba dukart suskaičiuotos pozicijos.
-            QTO automatiškai tikrina plotų persidengimus, kiekių dubliavimą tarp projekto dalių,
-            vnt. sutapimą su projekto žiniaraščiu, mastelio nukrypimus ir IFC tūrių logiką.
-          </p>
+          <p className="mt-5 max-w-lg leading-relaxed text-muted-foreground">{t.sc.text}</p>
           <div className="font-dim mt-6 inline-flex items-center gap-3 rounded-xl border border-border bg-card/70 px-4 py-3 text-sm">
-            <span className="text-emerald-300">✅ {CHECKS.length - warns} tvarkoj</span>
+            <span className="text-emerald-300">✅ {CHECKS.length - warns} {t.sc.ok}</span>
             <span className="text-border">|</span>
-            <span className="text-amber-300">⚠️ {warns} dėmesio</span>
+            <span className="text-amber-300">⚠️ {warns} {t.sc.warn}</span>
           </div>
         </motion.div>
 
@@ -66,9 +52,9 @@ export default function SelfCheckDemo() {
           <div className="absolute -inset-3 rounded-3xl bg-amber-400/5 blur-xl" />
           <div className="relative overflow-hidden rounded-2xl border border-border bg-card/90 shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
-              <span className="text-sm font-semibold">Savikontrolės rezultatai</span>
+              <span className="text-sm font-semibold">{t.sc.panelTitle}</span>
               <span className="font-dim text-xs text-muted-foreground">
-                {done < CHECKS.length ? 'tikrinama…' : `${CHECKS.length} patikrinimai`}
+                {done < CHECKS.length ? t.sc.checking : `${CHECKS.length} ${t.sc.checksN}`}
               </span>
             </div>
             <ul className="divide-y divide-border/50">
