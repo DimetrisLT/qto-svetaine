@@ -903,7 +903,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         )}
 
         {/* Brėžinys + perdanga */}
-        <div className="max-h-[640px] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900">
+        <div className="max-h-[55vh] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900 md:max-h-[640px]">
           <div
             ref={wrapRef}
             className="relative inline-block cursor-crosshair touch-none"
@@ -987,9 +987,45 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               )}
             </svg>
           </div>
+        {/* Slankiojantis puslapių perjungiklis – visada matomas (ir mobiliajame) */}
+        {numPages > 1 && (
+          <div className="sticky bottom-3 z-30 mx-auto flex w-fit items-center gap-1 rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur">
+            <button
+              disabled={pageNum <= 1}
+              onClick={() => setPageNum((p) => p - 1)}
+              className="rounded-full p-2 hover:bg-muted disabled:opacity-40"
+              title={t.pdf.pageNum}
+            ><ChevronLeft className="h-4 w-4" /></button>
+            <span className="flex items-center gap-1 text-xs font-medium tabular-nums">
+              <input
+                key={pageNum}
+                defaultValue={pageNum}
+                inputMode="numeric"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const n = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (n >= 1 && n <= numPages) setPageNum(n);
+                  }
+                }}
+                onBlur={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  if (n >= 1 && n <= numPages && n !== pageNum) setPageNum(n);
+                }}
+                className="h-6 w-9 rounded-md border bg-background px-1 text-center text-xs"
+                title={t.pdf.pageNum}
+              />
+              / {numPages}
+            </span>
+            <button
+              disabled={pageNum >= numPages}
+              onClick={() => setPageNum((p) => p + 1)}
+              className="rounded-full p-2 hover:bg-muted disabled:opacity-40"
+              title={t.pdf.pageNum}
+            ><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        )}
         </div>
       </div>
-
       {/* Šoninis stulpelis */}
       <div className="space-y-3">
         {/* OCR būsena ir žiniaraščio peržiūra */}
