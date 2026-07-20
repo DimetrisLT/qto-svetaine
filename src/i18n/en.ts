@@ -199,6 +199,7 @@ const en: typeof lt = {
     roomHeight: 'Height', deductOpenings: 'Deduct openings (≥5 ft²)',
     add: 'Add', cancel: 'Cancel', finish: 'Done',
     measurements: 'Measurements',
+    shortcuts: 'Enter – finish · Backspace / right-click – undo point · double-click – finish · wheel – zoom · Space / middle-drag – pan',
     emptyHint: 'Pick a tool ("Length", "Area", or "Count"), mark on the drawing, press "Done", and fill in the form.',
     manualEntry: 'Enter a project row manually',
     manualTitle: 'Manual project-row entry',

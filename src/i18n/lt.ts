@@ -198,6 +198,7 @@ const lt = {
     roomHeight: 'Aukštis', deductOpenings: 'Atimti angas (≥0,5 m²)',
     add: 'Įtraukti', cancel: 'Atšaukti', finish: 'Baigti',
     measurements: 'Matavimai',
+    shortcuts: 'Enter – baigti · Backspace / deš. kl. – nuimti tašką · dvigubas kl. – baigti · ratukas – mastytis · Space / vid. kl. – stumdyti',
     emptyHint: 'Pasirinkite įrankį („Ilgis“, „Plotas“ arba „Skaičiuoti“), žymėkite brėžinyje, spauskite „Baigti“ ir užpildykite formą.',
     manualEntry: 'Įvesti projekto poziciją ranka',
     manualTitle: 'Projekto pozicijos įvedimas ranka',

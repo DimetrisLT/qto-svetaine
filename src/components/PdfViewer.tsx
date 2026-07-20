@@ -108,6 +108,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [rangeLo, setRangeLo] = useState('1');
   const [rangeHi, setRangeHi] = useState('1');
   const [zoom, setZoom] = useState(1.6);
+  const zoomRef = useRef(1.6);
+  zoomRef.current = zoom;
+  const spaceRef = useRef(false);
+  const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+  const [hoverPdf, setHoverPdf] = useState<Pt | null>(null);
   const [tool, setTool] = useState<Tool>('none');
   const [current, setCurrent] = useState<Pt[]>([]);
   const [calibPts, setCalibPts] = useState<Pt[]>([]);
@@ -398,6 +403,54 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     return axesRef.current ?? null;
   };
 
+  // Klaviatūros spartieji (Bluebeam stilius): Enter – baigti, Backspace – paskutinis taškas, Esc – atšaukti, +/- – mastytis, Space – stumdymas
+  useEffect(() => {
+    const typing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === ' ') { spaceRef.current = true; return; }
+      if (typing()) return;
+      if (e.key === 'Enter') { e.preventDefault(); if (form) saveForm(); else finishCurrent(); }
+      else if (e.key === 'Escape') {
+        if (form) setForm(null);
+        else if (current.length) setCurrent([]);
+        else if (calibPts.length) setCalibPts([]);
+        else if (tool !== 'none') setTool('none');
+      } else if (e.key === 'Backspace') {
+        if (current.length) { e.preventDefault(); setCurrent((c) => c.slice(0, -1)); }
+        else if (calibPts.length) { e.preventDefault(); setCalibPts((c) => c.slice(0, -1)); }
+      } else if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(4, z + 0.25));
+      else if (e.key === '-') setZoom((z) => Math.max(0.5, z - 0.25));
+    };
+    const onUp = (e: KeyboardEvent) => { if (e.key === ' ') spaceRef.current = false; };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onUp);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onUp); };
+  });
+
+  // Ratukas – mastytis ties kursoriumi (CAD/Bluebeam įprotis)
+  useEffect(() => {
+    const scroller = wrapRef.current?.parentElement;
+    if (!scroller || !pdf) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const sRect = scroller.getBoundingClientRect();
+      const pdfX = (e.clientX - sRect.left + scroller.scrollLeft) / zoomRef.current;
+      const pdfY = (e.clientY - sRect.top + scroller.scrollTop) / zoomRef.current;
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const nz = Math.min(4, Math.max(0.5, zoomRef.current * factor));
+      setZoom(nz);
+      requestAnimationFrame(() => {
+        scroller.scrollLeft = pdfX * nz - (e.clientX - sRect.left);
+        scroller.scrollTop = pdfY * nz - (e.clientY - sRect.top);
+      });
+    };
+    scroller.addEventListener('wheel', onWheel, { passive: false });
+    return () => scroller.removeEventListener('wheel', onWheel);
+  }, [pdf]);
+
   const toggleLayer = (id: string, visible: boolean) => {
     try { ocgConfigRef.current?.setVisibility(id, visible); } catch { /* ignore */ }
     setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, visible } : l)));
@@ -415,10 +468,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     setCurrent((c) => [...c, p]);
   };
 
-  const finishCurrent = () => {
-    if (tool === 'length' && current.length >= 2) openForm('length', current);
-    else if (tool === 'area' && current.length >= 3) openForm('area', current);
-    else if (tool === 'count' && current.length >= 1) openForm('count', current);
+  const finishCurrent = (ptsArg?: Pt[]) => {
+    const pts = ptsArg ?? current;
+    if (tool === 'length' && pts.length >= 2) openForm('length', pts);
+    else if (tool === 'area' && pts.length >= 3) openForm('area', pts);
+    else if (tool === 'count' && pts.length >= 1) openForm('count', pts);
   };
 
   const openForm = (kind: PendingForm['kind'], pts: Pt[]) => {
@@ -555,6 +609,16 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   // --- Žiniaraščio skaitymas (OCR) ---
   const handleMouseDown = (e: React.PointerEvent) => {
+    // Stumdymas: vidurinis mygtukas arba Space (Bluebeam/PlanSwift įprotis)
+    if (e.button === 1 || spaceRef.current) {
+      const scroller = wrapRef.current?.parentElement;
+      if (scroller) {
+        e.preventDefault();
+        panRef.current = { x: e.clientX, y: e.clientY, sl: scroller.scrollLeft, st: scroller.scrollTop };
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      }
+      return;
+    }
     if ((tool !== 'scan' && tool !== 'match') || reviewRows || scanning || matchResults) return;
     // Lietimo gestams – užfiksuojame pointer'į, kad tempimas nenutrūktų
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
@@ -563,6 +627,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleMouseMove = (e: React.PointerEvent) => {
+    // Stumdymas viduriniu mygtuku arba Space (kaip Bluebeam/PlanSwift)
+    if (panRef.current) {
+      const scroller = wrapRef.current?.parentElement;
+      if (scroller) {
+        scroller.scrollLeft = panRef.current.sl - (e.clientX - panRef.current.x);
+        scroller.scrollTop = panRef.current.st - (e.clientY - panRef.current.y);
+      }
+      return;
+    }
     if (tool === 'scan' || tool === 'match') {
       if (!scanRect || e.buttons !== 1) return;
       const p = toPdfPt(e);
@@ -570,11 +643,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       return;
     }
     // Prisirišimas (snapping) matavimo įrankiams: pirmiausia ašių sankirtos, po to vektoriai
-    if (tool === 'none' || form) return;
+    if (tool === 'none' || form) { setHoverPdf(null); return; }
     const p = toPdfPt(e);
     const ax = snapToAxes(getAxes(), p, 12 / zoom);
     const next = ax ?? snapIndexRef.current?.snap(p, 9 / zoom)?.p ?? null;
     snapRef.current = next;
+    setHoverPdf(next ?? p);
     const prev = snapPrevRef.current;
     const changed = (next === null) !== (prev === null)
       || (next && prev && (Math.abs(next.x - prev.x) > 0.5 || Math.abs(next.y - prev.y) > 0.5));
@@ -585,6 +659,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleMouseUp = () => {
+    panRef.current = null;
     if (tool === 'match' && scanRect) {
       const r = scanRect;
       setScanRect(null);
@@ -941,7 +1016,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {/* Visada rezervuojame vietą – kad brėžinys „nešoktų“ žymint pirmą tašką */}
           <span className={cn('flex items-center gap-1.5', current.length === 0 && 'invisible')} aria-hidden={current.length === 0}>
             <span className="mx-1 h-5 w-px bg-border" />
-            <button onClick={finishCurrent} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
+            <button onClick={() => finishCurrent()} title="Enter" className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
               <Check className="h-3.5 w-3.5" /> {t.pdf.finish} ({current.length})
             </button>
             <button onClick={() => setCurrent([])} className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-muted">
@@ -1046,6 +1121,23 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             ref={wrapRef}
             className="relative inline-block cursor-crosshair touch-none"
             onClick={handleClick}
+            onDoubleClick={(e) => {
+              if (current.length >= 1 && tool !== 'calib') {
+                e.preventDefault();
+                // dvigubo kliko metu paskutiniai du taškai sutampa – nuimame dublikatą ir baigiame
+                let pts = current;
+                const n = pts.length;
+                if (n >= 2 && Math.hypot(pts[n - 1].x - pts[n - 2].x, pts[n - 1].y - pts[n - 2].y) < 1) pts = pts.slice(0, -1);
+                finishCurrent(pts);
+              }
+            }}
+            onContextMenu={(e) => {
+              if (current.length || calibPts.length) {
+                e.preventDefault();
+                if (current.length) setCurrent((c) => c.slice(0, -1));
+                else setCalibPts((c) => c.slice(0, -1));
+              }
+            }}
             onPointerDown={handleMouseDown}
             onPointerMove={handleMouseMove}
             onPointerUp={handleMouseUp}
@@ -1124,6 +1216,17 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 />
               )}
             </svg>
+            {/* Tiesioginė ataskaita prie kursoriaus (Bluebeam stilius) */}
+            {hoverPdf && !form && current.length > 0 && calibrated && (tool === 'length' || tool === 'area' || tool === 'count') && (
+              <div
+                className="pointer-events-none absolute z-20 whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-[11px] font-semibold text-white shadow"
+                style={{ left: hoverPdf.x * zoom + 16, top: hoverPdf.y * zoom + 16 }}
+              >
+                {tool === 'length' && `${fmtQty(polylineLength([...current, hoverPdf], false) / unitsPerMeter!, 'm', 2, units)} ${uLabel('m', units)}`}
+                {tool === 'area' && `${fmtQty(polygonArea([...current, hoverPdf]) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`}
+                {tool === 'count' && `${current.length + 1} ${t.pdf.pcs}`}
+              </div>
+            )}
           </div>
         {/* Slankiosios valdymo kortelės: kalibravimas + puslapių perjungiklis */}
         <div className="sticky bottom-3 z-30 mx-auto flex w-fit max-w-full flex-col items-center gap-2">
@@ -1321,7 +1424,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         )}
         {/* Naujo matavimo forma: telefone – lipni apatinė kortelė (bottom sheet) */}
         {form && (
-          <div className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
+          <div onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveForm(); } }} className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
             <p className="text-sm font-semibold">
               {form.kind === 'length' ? t.pdf.formLength : form.kind === 'area' ? t.pdf.formArea : `${t.pdf.formCount} (${form.pts.length} ${t.pdf.pcs})`}
             </p>
@@ -1448,6 +1551,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {/* Matavimų sąrašas */}
         <div className="rounded-xl border p-3">
           <p className="mb-2 text-sm font-semibold">{t.pdf.measurements} ({items.length})</p>
+          <p className="mb-2 hidden text-[10px] leading-snug text-muted-foreground lg:block">{t.pdf.shortcuts}</p>
           {items.length === 0 && (
             <p className="text-xs text-muted-foreground">
               {t.pdf.emptyHint}
