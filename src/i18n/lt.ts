@@ -234,7 +234,7 @@ const lt = {
     scanning: 'Skaitoma (OCR)…', scannedArea: 'Nuskaityta sritis:',
     autoScanning: 'Automatiškai ieškoma žiniaraščių', autoPage: 'psl.',
     autoNone: 'Žiniaraščių nepavyko rasti automatiškai. Pažymėkite žiniaraščio sritį rankiniu būdu („Žiniaraštis (OCR)“ įrankis).',
-    autoCancel: 'Atšaukti', autoHint: 'Nuskaito visus pasirinktus puslapius ir surenka kiekių eilutes iš projekto žiniaraščių.',
+    autoCancel: 'Atšaukti', autoHint: 'Nuskaito puslapius ir surenka kiekių eilutes iš projekto žiniaraščių. Šalia pasirinkite: tik dabartinis puslapis ar visas diapazonas.', autoScopeHint: 'Auto paieškos apimtis', autoScopePage: 'Šis psl.', autoScopeRange: 'Diapazonas',
     matchHintA: 'Nuspauskite ir užtempkite rėmelį ant', matchHintB: '(durų, lango, gaubto, šviestuvo grafiklio) – programa ras visus identiškus puslapyje ir leis patikrinti prieš skaičiuojant.',
     oneSymbol: 'vieno simbolio',
     matching: 'Ieškoma simbolių…', found: 'Rasta', foundOf: 'iš',

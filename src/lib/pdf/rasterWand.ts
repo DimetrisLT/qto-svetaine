@@ -26,7 +26,10 @@ export function rasterWand(rawSegs: Segments, p: Pt, pageW: number, pageH: numbe
   const plot = (x: number, y: number) => {
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
     const i = y * W + x;
-    grid[i] = 1; grid[i - 1] = 1; grid[i + 1] = 1; grid[i - W] = 1; grid[i + W] = 1;
+    // Pilnas 3×3 teptukas: įstrižainės užsandarina plaukiojo pločio tarpus linijų sankryžose
+    grid[i] = 1; grid[i - 1] = 1; grid[i + 1] = 1;
+    grid[i - W] = 1; grid[i - W - 1] = 1; grid[i - W + 1] = 1;
+    grid[i + W] = 1; grid[i + W - 1] = 1; grid[i + W + 1] = 1;
   };
   const d = segs.data;
   for (let s = 0; s < segs.count; s++) {

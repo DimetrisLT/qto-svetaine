@@ -114,7 +114,8 @@ function cleanName(name: string): string {
 }
 
 // Vieneto žyma eilutėje (OCR variantai: VNT., M3, M?, Mi, M2, KG, T)
-const UNIT_RE = /\b(VNTS?\.?|VNT\.?|M3|M\?|M³|MI|M2|M²|KG|T\.?)\b/i;
+// Ribos – unicode-safe (JS \b nemato „ū“, „į“ ir pan., todėl „mūrijimas“ sugautų „m“)
+const UNIT_RE = /(^|[^\p{L}\p{N}_])(VNTS?\.?|VNT\.?|KOMPL\.?|KPL\.?|M3|M\?|M³|MI|M2|M²|KV\.?M\.?²?|KUB\.?|KG|T\.?|ML|L|M)(?![\p{L}\p{N}_])/iu;
 const NUM_RE = /(\d+[.,]\d+|\d+)/g;
 
 /** Ar eilutė panaši į antraštę / pastabas (praleidžiama) */
@@ -122,6 +123,11 @@ function isSkippable(line: string): boolean {
   const u = line.toUpperCase();
   if (/(POZ\.|PAVADINIMAS|CHARAKTERISTIK|MATO\s|ARMAVIMAS|PASTAB|ŽINIARAŠT|ZINIARAST|EKSPLIKAC)/.test(u)) return true;
   if (/^VISO/.test(u)) return true; // sumos – perskaičiuojamos programoje
+  // Brėžinių lapų antraštės ir pastabos, ne darbų pozicijos
+  if (/(PLANAS|FASADA[IIS]?|PJŪVIS|PJUVIS|SHEMA|RŪSIS|RUSIS|PUSIAUSVYRA)\b/.test(u) && !/(ARDYMA|REMONTO|DANGOS|MŪRIJ|SIENŲ|GRINDŲ|STOGO DANGA)/.test(u)) return true;
+  if (/ATLIKAMI DARBAI|PROJEKTUOJAMI|ESAMA BŪKLĖ|ESAMA BUKLE/.test(u)) return true;
+  if (/PATALP[OSŲ]?\s*\.?\s*NR|PATALPA\s+PLOTAS/.test(u)) return true; // eksplikacijų antraštės
+  if (/=/.test(line)) return true; // aukščių žymos („0,000 = 140,5“)
   return false;
 }
 
@@ -135,17 +141,25 @@ export function parseScheduleText(text: string): ScannedRow[] {
     const unitMatch = line.match(UNIT_RE);
     if (!unitMatch || unitMatch.index === undefined) continue;
 
-    const unitToken = unitMatch[1].toUpperCase().replace('.', '');
+    const unitToken = unitMatch[2].toUpperCase().replace('.', '');
+    const unitIndex = unitMatch.index + unitMatch[1].length;
     let unit: QtoItem['unit'];
-    if (unitToken.startsWith('VNT')) unit = 'vnt.';
-    else if (unitToken === 'M3' || unitToken === 'M?' || unitToken === 'M³' || unitToken === 'MI') unit = 'm³';
-    else if (unitToken === 'M2' || unitToken === 'M²') unit = 'm²';
+    if (unitToken.startsWith('VNT') || unitToken.startsWith('KOMPL') || unitToken.startsWith('KPL')) unit = 'vnt.';
+    else if (unitToken === 'M3' || unitToken === 'M?' || unitToken === 'M³' || unitToken === 'MI' || unitToken === 'KUB') unit = 'm³';
+    else if (unitToken === 'M2' || unitToken === 'M²' || unitToken === 'KVM') unit = 'm²';
     else if (unitToken === 'KG' || unitToken === 'T') unit = 'kg';
     else unit = 'm';
 
-    const namePart = cleanName(line.slice(0, unitMatch.index));
-    const after = line.slice(unitMatch.index + unitMatch[0].length);
+    let namePart = cleanName(line.slice(0, unitIndex));
+    // Eilutės numeracija („1.1.“, „2.3.1“) – ne pavadinimo dalis
+    namePart = namePart.replace(/^\d+(\.\d+)*\.?\s+/, '');
+    // Tūkstantiniai skirtukai tarp skaitmenų („1 320,00“ → „1320,00“)
+    const after = line.slice(unitIndex + unitMatch[2].length).replace(/(\d)\s+(?=\d{3}\b)/g, '$1');
     if (namePart.length < 3) continue;
+    // Pavadinimas turi turėti bent 2 raides (atmesti „4,97“, „IV k“, „16-6 10.96“)
+    const letters = (namePart.match(/\p{L}/gu) ?? []).length;
+    if (letters < 2) continue;
+    if (/^[\d\s.,\-–—:;/\\]+$/.test(namePart)) continue;
 
     const nums: number[] = [];
     let m: RegExpExecArray | null;
@@ -154,7 +168,17 @@ export function parseScheduleText(text: string): ScannedRow[] {
       const v = parseFloat(m[1].replace(',', '.'));
       if (Number.isFinite(v)) nums.push(v);
     }
-    if (nums.length === 0) continue;
+    if (nums.length === 0) {
+      // Atvirkštinė tvarka: kiekis PRIEŠ vienetą („Pertvaros 132,00 m²“)
+      const before = namePart.replace(/(\d)\s+(?=\d{3}\b)/g, '$1');
+      const tail = before.match(/^(.*?)\s+(\d+[.,]\d+|\d+)\s*$/);
+      if (!tail) continue;
+      const v = parseFloat(tail[2].replace(',', '.'));
+      if (!Number.isFinite(v)) continue;
+      namePart = cleanName(tail[1]);
+      if (namePart.length < 3) continue;
+      nums.push(v);
+    }
     const qty = nums[0];
     if (qty <= 0) continue;
 

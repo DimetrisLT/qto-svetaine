@@ -3,7 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles, Wand2, Route, RectangleHorizontal, Scissors } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, uid, type ElementCategory, type QtoItem } from '@/types/qto';
-import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
+import { dist, polygonArea, polylineLength, netDeductArea, type Pt } from '@/lib/pdf/measure';
 import { fmt, fmtQty, round, uLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, type ScannedRow } from '@/lib/ocr/scanSchedule';
@@ -131,6 +131,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   const autoCancelRef = useRef(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [autoScope, setAutoScope] = useState<'page' | 'range'>('page');
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ScannedRow[] | null>(null);
   const [reviewTitle, setReviewTitle] = useState('');
@@ -169,6 +170,88 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Lietimo gestų būsena: pinch (2 pirštai) arba pan (1 piršto vilkimas; bakstelėjimas = taškas)
+  const touchRef = useRef<{
+    mode: 'pinch' | 'pan' | 'maybe-pan' | null;
+    d0: number; z0: number; mx: number; my: number; // pinch: pradinis atstumas, zoom, vidurio taškas
+    px: number; py: number; // pan: paskutinė piršto pozicija
+    sx: number; sy: number; // maybe-pan: pradinė pozicija (slenkstis 10 px)
+  }>({ mode: null, d0: 0, z0: 1, mx: 0, my: 0, px: 0, py: 0, sx: 0, sy: 0 });
+  const swallowClickRef = useRef(false); // po pan-vilkimo sintetinį click ignoruojame
+
+  const handleTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      touchRef.current = {
+        mode: 'pinch',
+        d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        z0: zoom,
+        mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2,
+        px: 0, py: 0, sx: 0, sy: 0,
+      };
+    } else if (e.touches.length === 1) {
+      // Bet koks įrankis: vilkimas >10 px = ekrano stumdymas, trumpas bakstelėjimas = taškas
+      const t0 = e.touches[0];
+      touchRef.current = { mode: tool === 'none' ? 'pan' : 'maybe-pan', d0: 0, z0: zoom, mx: 0, my: 0, px: t0.clientX, py: t0.clientY, sx: t0.clientX, sy: t0.clientY };
+    }
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    const g = touchRef.current;
+    const sc = scrollRef.current;
+    if (g.mode === 'pinch' && e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (g.d0 > 0) setZoom(Math.min(4, Math.max(0.5, g.z0 * (d / g.d0))));
+      if (sc) { // vidurio taško judesys – slenka konteinerį
+        const mx = (a.clientX + b.clientX) / 2, my = (a.clientY + b.clientY) / 2;
+        sc.scrollLeft -= mx - g.mx; sc.scrollTop -= my - g.my;
+        g.mx = mx; g.my = my;
+      }
+    } else if ((g.mode === 'pan' || g.mode === 'maybe-pan') && e.touches.length === 1 && sc) {
+      const t0 = e.touches[0];
+      if (g.mode === 'maybe-pan') {
+        if (Math.hypot(t0.clientX - g.sx, t0.clientY - g.sy) < 10) return; // dar bakstelėjimas
+        g.mode = 'pan';
+        swallowClickRef.current = true;
+      }
+      sc.scrollLeft -= t0.clientX - g.px; sc.scrollTop -= t0.clientY - g.py;
+      g.px = t0.clientX; g.py = t0.clientY;
+    }
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    const g = touchRef.current;
+    if (g.mode === 'maybe-pan' && e.changedTouches.length === 1) {
+      // Pirštas nepajudėjo >10 px – tai bakstelėjimas (taško statymas)
+      const t0 = e.changedTouches[0];
+      tapCore(t0.clientX, t0.clientY);
+    }
+    touchRef.current.mode = null;
+  };
+
+  // Native (nepasyvūs) lietimo klausytojai: React root listeneriai yra passive,
+  // todėl preventDefault neveikia ir kompozitorius „atšoka“ programiškai slinktą poziciją.
+  const touchHandlersRef = useRef({ start: handleTouchStart, move: handleTouchMove, end: handleTouchEnd });
+  touchHandlersRef.current = { start: handleTouchStart, move: handleTouchMove, end: handleTouchEnd };
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onStart = (e: TouchEvent) => { e.preventDefault(); touchHandlersRef.current.start(e); };
+    const onMove = (e: TouchEvent) => { e.preventDefault(); touchHandlersRef.current.move(e); };
+    const onEnd = (e: TouchEvent) => { e.preventDefault(); touchHandlersRef.current.end(e); };
+    el.addEventListener('touchstart', onStart, { passive: false });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: false });
+    el.addEventListener('touchcancel', onEnd, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  });
 
   useEffect(() => { onPageChange?.(pageNum); }, [pageNum]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -183,11 +266,29 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     setRangeOpen(false);
   };
 
+  // Pakeitus puslapį – uždaryti nebaigtą matavimą/formą (niekas „nenuklysta“ į kitą puslapį)
+  useEffect(() => {
+    setForm(null);
+    setCurrent([]);
+    setCalibPts([]);
+    setCutting(false);
+    setCutPts([]);
+    setDeducts([]);
+    setScanError(null);
+    // Simbolių paieškos rezultatai priklauso tik tam puslapiui
+    setMatchResults(null);
+    setMatchThumb(null);
+    setMatchError(null);
+  }, [pageNum]);
+
   const calibrated = unitsPerMeter !== null && unitsPerMeter > 0;
   const toMeters = useCallback((u: number) => (calibrated ? u / unitsPerMeter! : undefined), [calibrated, unitsPerMeter]);
 
   // PDF figūros išvedamos iš kiekių eilučių (vienintelis tiesos šaltinis – tėvinis state)
-  const shapes = useMemo(() => items.filter((i) => i.pdfPoints && i.pdfPage === pageNum), [items, pageNum]);
+  const shapes = useMemo(
+    () => items.filter((i) => i.pdfPoints && i.pdfPage === pageNum && (!i.pdfFile || i.pdfFile === fileId)),
+    [items, pageNum, fileId]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -364,7 +465,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     return () => { cancelled = true; };
   }, [pdf, pageNum]);
 
-  const toPdfPt = (e: React.MouseEvent | React.PointerEvent): Pt => {
+  const toPdfPt = (e: { clientX: number; clientY: number }): Pt => {
     const rect = wrapRef.current!.getBoundingClientRect();
     return { x: (e.clientX - rect.left) / zoom, y: (e.clientY - rect.top) / zoom };
   };
@@ -471,6 +572,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleClick = (e: React.MouseEvent) => {
+    if (swallowClickRef.current) { swallowClickRef.current = false; return; } // buvo pan-vilkimas, ne bakstelėjimas
+    clickCore(e.clientX, e.clientY);
+  };
+
+  // Bakstelėjimas lietimu (touchend po nepajudinto piršto) – ta pati logika kaip click
+  const tapCore = (x: number, y: number) => clickCore(x, y);
+
+  const clickCore = (clientX: number, clientY: number) => {
+    const e = { clientX, clientY };
     if (tool === 'none' || tool === 'scan' || tool === 'match') return;
     // Atėmimo taškų rinkimas, kol atidaryta ploto forma (cut-out režimas)
     if (form) {
@@ -578,6 +688,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const finishCutting = () => {
     if (cutPts.length >= 3) setDeducts((d) => [...d, cutPts]);
     setCutPts([]);
+    setCutting(false); // užbaigus angą išėjame iš režimo – kitą angą pradedame nauju paspaudimu
   };
 
   const saveForm = () => {
@@ -604,7 +715,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       }
     } else if (form.kind === 'area') {
       const u = polygonArea(form.pts);
-      const ded = deducts.reduce((s, d) => s + polygonArea(d), 0);
+      const ded = netDeductArea(form.pts, deducts);
       area_m2 = calibrated ? round(Math.max(0, u - ded) / (unitsPerMeter! * unitsPerMeter!), 3) : 0;
       unit = 'm²';
       if (!Number.isNaN(th)) { volume_m3 = round(area_m2 * th, 3); unit = 'm³'; }
@@ -618,7 +729,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     }
 
     const cutNote = form.kind === 'area' && deducts.length > 0 && calibrated
-      ? `${t.pdf.cutoutNote}: −${fmtQty(deducts.reduce((s, d) => s + polygonArea(d), 0) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
+      ? `${t.pdf.cutoutNote}: −${fmtQty(netDeductArea(form.pts, deducts) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
       : null;
     const item: QtoItem = {
       id: uid(),
@@ -884,12 +995,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     autoCancelRef.current = false;
     setScanning(true);
     setScanError(null);
-    const total = rangeHiBound - rangeLoBound + 1;
+    const scanLo = autoScope === 'page' ? pageNum : rangeLoBound;
+    const scanHi = autoScope === 'page' ? pageNum : rangeHiBound;
+    const total = scanHi - scanLo + 1;
     setScanProgress({ done: 0, total });
     const found: ScannedRow[] = [];
     let pagesWithRows = 0;
     try {
-      for (let p = rangeLoBound; p <= rangeHiBound; p++) {
+      for (let p = scanLo; p <= scanHi; p++) {
         if (autoCancelRef.current) break;
         const page = await pdf.getPage(p);
         let text = '';
@@ -911,7 +1024,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           for (const r of rows) r.page = p;
           found.push(...rows);
         }
-        setScanProgress({ done: p - rangeLoBound + 1, total });
+        setScanProgress({ done: p - scanLo + 1, total });
       }
       if (found.length === 0) {
         setScanError(t.pdf.autoNone);
@@ -1004,7 +1117,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {kind === 'area' && pts.length >= 3 && (
           <polygon points={pathPts} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={2} />
         )}
-        {kind !== 'area' && pts.length >= 2 && (
+        {kind !== 'area' && kind !== 'count' && pts.length >= 2 && (
           <polyline points={pathPts} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
         )}
         {kind === 'count'
@@ -1043,10 +1156,19 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             onClick={() => void runAutoScan()}
             disabled={scanning}
             title={t.pdf.autoHint}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/60 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1.5 rounded-l-lg border border-primary/60 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" />{t.pdf.tools.auto}
           </button>
+          <select
+            value={autoScope}
+            onChange={(e) => setAutoScope(e.target.value as 'page' | 'range')}
+            title={t.pdf.autoScopeHint}
+            className="-ml-2 shrink-0 rounded-r-lg border border-l-0 border-primary/60 bg-primary/10 px-1.5 py-2 text-xs font-semibold text-primary"
+          >
+            <option value="page">{t.pdf.autoScopePage} {pageNum}</option>
+            <option value="range">{t.pdf.autoScopeRange} {rangeLoBound}–{rangeHiBound}</option>
+          </select>
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
@@ -1207,7 +1329,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         )}
 
         {/* Brėžinys + perdanga */}
-        <div className="max-h-[55vh] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900 md:max-h-[640px]">
+        <div ref={scrollRef} className="max-h-[55vh] overflow-auto rounded-xl border bg-slate-100 dark:bg-slate-900 md:max-h-[640px]">
           <div
             ref={wrapRef}
             className="relative inline-block cursor-crosshair touch-none"
@@ -1655,7 +1777,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   <div className="mt-1.5 flex items-center justify-between text-[11px] font-medium text-rose-900 dark:text-rose-200">
                     <span>
                       {t.pdf.cutoutRemoved}: −{calibrated
-                        ? `${fmtQty(deducts.reduce((s, d) => s + polygonArea(d), 0) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
+                        ? `${fmtQty(netDeductArea(form.pts, deducts) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
                         : `${deducts.length}`}
                     </span>
                     <button onClick={() => setDeducts([])} className="underline hover:no-underline">{t.pdf.cutoutClear}</button>

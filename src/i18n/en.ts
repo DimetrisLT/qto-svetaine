@@ -235,7 +235,7 @@ const en: typeof lt = {
     scanning: 'Reading (OCR)…', scannedArea: 'Scanned area:',
     autoScanning: 'Auto-scanning for schedules', autoPage: 'p.',
     autoNone: 'No schedules found automatically. Try selecting the schedule area manually (the "Schedule (OCR)" tool).',
-    autoCancel: 'Cancel', autoHint: 'Scans all selected pages and collects quantity rows from the project schedules.',
+    autoCancel: 'Cancel', autoHint: 'Scans pages and collects quantity rows from project schedules. Choose scope next to the button: current page or full range.', autoScopeHint: 'Auto scan scope', autoScopePage: 'This page', autoScopeRange: 'Range',
     matchHintA: 'Press and drag a frame over', matchHintB: '(door, window, column, light fixture mark) – the app will find all identical ones on the page and let you review before counting.',
     oneSymbol: 'a single symbol',
     matching: 'Searching for symbols…', found: 'Found', foundOf: 'of',
