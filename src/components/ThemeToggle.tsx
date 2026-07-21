@@ -8,7 +8,8 @@ const KEY = 'qto-theme';
 export function applyStoredTheme() {
   try {
     const t = localStorage.getItem(KEY);
-    const dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    // Numatyta VISADA šviesi tema (nesekti sistemos) – tamsi tik jei vartotojas pats pasirinko
+    const dark = t === 'dark';
     document.documentElement.classList.toggle('dark', dark);
   } catch {
     /* localStorage nepasiekiamas – lieka šviesi */
