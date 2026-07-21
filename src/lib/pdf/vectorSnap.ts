@@ -29,6 +29,8 @@ export interface Segments {
   /** Plokščias masyvas [x0,y0,x1,y1, ...] matavimo erdvėje (pdf pt, y žemyn) */
   data: Float32Array;
   count: number;
+  /** Požymis segmentui: 1 = brūkšninė linija (ašys, konstrukcinės) – „wand“ įrankiai praleidžia */
+  dashed?: Uint8Array;
 }
 
 const MAX_SEGMENTS = 300_000;
@@ -40,8 +42,12 @@ export async function extractSegments(page: PDFPageProxy): Promise<Segments | nu
   const vt = viewport.transform; // user space → mūsų matavimo erdvė (pt, y žemyn)
 
   const segs: number[] = [];
+  const dashFlags: number[] = [];
   let ctm: Mat = [...IDENTITY];
   const stack: Mat[] = [];
+  const dashStack: boolean[] = [];
+  let dashed = false; // einamoji brūkšnio būsena (setDash)
+  let anyDashed = false;
   let cx = 0, cy = 0; // einamasis taškas (user space)
   let sx = 0, sy = 0; // subpath pradžia
 
@@ -56,6 +62,8 @@ export async function extractSegments(page: PDFPageProxy): Promise<Segments | nu
     const len2 = dx * dx + dy * dy;
     if (len2 < 0.04 || len2 > 4_000_000) return;
     segs.push(p.x, p.y, q.x, q.y);
+    dashFlags.push(dashed ? 1 : 0);
+    if (dashed) anyDashed = true;
   };
 
   const flattenCurve = (x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number) => {
@@ -76,10 +84,15 @@ export async function extractSegments(page: PDFPageProxy): Promise<Segments | nu
     const args = opList.argsArray[k];
     if (fn === OPS.save) {
       stack.push([...ctm]);
+      dashStack.push(dashed);
     } else if (fn === OPS.restore) {
       ctm = stack.pop() ?? [...IDENTITY];
+      dashed = dashStack.pop() ?? false;
     } else if (fn === OPS.transform) {
       ctm = multiply(ctm, args as number[]);
+    } else if (fn === OPS.setDash) {
+      const arr = args?.[0] as number[] | undefined;
+      dashed = Array.isArray(arr) && arr.length > 0;
     } else if (fn === OPS.constructPath) {
       const buf = args?.[1]?.[0] as Float32Array | null;
       if (!buf) continue;
@@ -112,7 +125,11 @@ export async function extractSegments(page: PDFPageProxy): Promise<Segments | nu
   }
 
   if (segs.length === 0) return null;
-  return { data: new Float32Array(segs), count: segs.length / 4 };
+  return {
+    data: new Float32Array(segs),
+    count: segs.length / 4,
+    dashed: anyDashed ? Uint8Array.from(dashFlags) : undefined,
+  };
 }
 
 interface SnapPoint { x: number; y: number; kind: 'end' | 'mid' }

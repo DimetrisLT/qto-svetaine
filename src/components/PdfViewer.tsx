@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles, Wand2, Route, RectangleHorizontal, Scissors } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, type Pt } from '@/lib/pdf/measure';
 import { fmt, fmtQty, round, uLabel } from '@/lib/format';
@@ -16,6 +16,8 @@ import {
 import { extractTextItems } from '@/lib/pdf/textItems';
 import { ocrTextItems } from '@/lib/ocr/pageText';
 import { extractSegments, SnapIndex } from '@/lib/pdf/vectorSnap';
+import { wandArea, traceLine } from '@/lib/pdf/wand';
+import { rasterWand } from '@/lib/pdf/rasterWand';
 import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
 import { buildRoomFinishItems } from '@/lib/pdf/roomFinishes';
 import { grayscaleFromCanvas, matchTemplate, cropGray, binarizeDilate } from '@/lib/ocr/templateMatch';
@@ -23,12 +25,12 @@ import { useI18n } from '@/i18n/I18nContext';
 import { L } from '@/i18n/store';
 import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+// Dev serveryje node_modules gali būti už root ribų (symlink) – worker'į tiekiame iš public/
+pdfjsLib.GlobalWorkerOptions.workerSrc = import.meta.env.DEV
+  ? '/pdf.worker.min.mjs'
+  : new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
-type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan' | 'match';
+type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan' | 'match' | 'wand' | 'line' | 'rect';
 
 interface SymbolMatch {
   /** Centro taškas PDF pt (scale 1) */
@@ -118,6 +120,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [calibPts, setCalibPts] = useState<Pt[]>([]);
   const [calibInput, setCalibInput] = useState('');
   const [form, setForm] = useState<PendingForm | null>(null);
+  // Atėmimai (cut-out, Kreo stilius): angų poligonai, atimami iš atidarytos ploto formos
+  const [cutting, setCutting] = useState(false);
+  const [cutPts, setCutPts] = useState<Pt[]>([]);
+  const [deducts, setDeducts] = useState<Pt[][]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
   const [scanRect, setScanRect] = useState<ScanRect | null>(null);
@@ -411,15 +417,22 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === ' ') { spaceRef.current = true; return; }
+      if (e.defaultPrevented) return; // jau apdorota React formos handlerio
       if (typing()) return;
-      if (e.key === 'Enter') { e.preventDefault(); if (form) saveForm(); else finishCurrent(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (form) { if (cutting && cutPts.length >= 3) finishCutting(); else saveForm(); }
+        else finishCurrent();
+      }
       else if (e.key === 'Escape') {
-        if (form) setForm(null);
+        if (cutting) { setCutting(false); setCutPts([]); }
+        else if (form) { setForm(null); setDeducts([]); }
         else if (current.length) setCurrent([]);
         else if (calibPts.length) setCalibPts([]);
         else if (tool !== 'none') setTool('none');
       } else if (e.key === 'Backspace') {
-        if (current.length) { e.preventDefault(); setCurrent((c) => c.slice(0, -1)); }
+        if (cutting && cutPts.length) { e.preventDefault(); setCutPts((c) => c.slice(0, -1)); }
+        else if (current.length) { e.preventDefault(); setCurrent((c) => c.slice(0, -1)); }
         else if (calibPts.length) { e.preventDefault(); setCalibPts((c) => c.slice(0, -1)); }
       } else if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(4, z + 0.25));
       else if (e.key === '-') setZoom((z) => Math.max(0.5, z - 0.25));
@@ -458,13 +471,62 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (tool === 'none' || tool === 'scan' || tool === 'match' || form) return;
-    const p = snapRef.current ?? toPdfPt(e);
+    if (tool === 'none' || tool === 'scan' || tool === 'match') return;
+    // Atėmimo taškų rinkimas, kol atidaryta ploto forma (cut-out režimas)
+    if (form) {
+      if (cutting && form.kind === 'area') setCutPts((c) => [...c, snapRef.current ?? toPdfPt(e)]);
+      return;
+    }
     if (tool === 'calib') {
+      const p = snapRef.current ?? toPdfPt(e);
       const next = [...calibPts, p].slice(-2);
       setCalibPts(next);
       return;
     }
+    // Kreo „1-klik plotas“: spustelėjimas patalpoje → automatinis kontūras iš vektorių.
+    // Čia naudojamas NEAPDIRBTAS taškas (be prisirišimo) – burtas turi patekti į patalpos vidų.
+    if (tool === 'wand') {
+      const p = toPdfPt(e);
+      const segs = segsDataRef.current;
+      if (!segs || segs.count === 0) { setScanError(t.pdf.wandNoVector); return; }
+      // Pirmiausia rastrinis flood-fill (visada grąžina sritį, kurioje TIKRAI yra p –
+      // kaip Kreo CV); jam nepavykus – tikslusis vektorinis grafo sekimas.
+      let pts: Pt[] | null = null;
+      const ps = pageSizeRef.current;
+      if (ps) pts = rasterWand(segs, p, ps.w, ps.h);
+      if (!pts) pts = wandArea(segs, p);
+      if (pts && pts.length >= 3) { setScanError(null); openForm('area', pts); }
+      else setScanError(t.pdf.wandFail);
+      return;
+    }
+    // Kreo „1-klik linija“: spustelėjimas ant linijos → nusekamas jos kelias.
+    if (tool === 'line') {
+      const p = toPdfPt(e);
+      const segs = segsDataRef.current;
+      if (!segs || segs.count === 0) { setScanError(t.pdf.wandNoVector); return; }
+      const pts = traceLine(segs, p);
+      if (pts && pts.length >= 2) { setScanError(null); openForm('length', pts); }
+      else setScanError(t.pdf.lineFail);
+      return;
+    }
+    // Stačiakampis iš 2 taškų (Kreo Rectangle) – iškart atidaroma forma.
+    if (tool === 'rect') {
+      const p = snapRef.current ?? toPdfPt(e);
+      const next = [...current, p].slice(-2);
+      if (next.length === 2) {
+        const [a, b] = next;
+        // Apsauga nuo nulinio stačiakampio (pvz., dvigubas klikas pradedant)
+        if (Math.abs(b.x - a.x) < 1 || Math.abs(b.y - a.y) < 1) { setCurrent([a]); return; }
+        setCurrent([]);
+        openForm('area', [
+          { x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y },
+        ]);
+      } else {
+        setCurrent(next);
+      }
+      return;
+    }
+    const p = snapRef.current ?? toPdfPt(e);
     setCurrent((c) => [...c, p]);
   };
 
@@ -506,6 +568,16 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       deductOpenings: true,
     });
     setCurrent([]);
+    setCutting(false);
+    setCutPts([]);
+    setDeducts([]);
+  };
+
+  // Užbaigti einamąjį atėmimo poligoną (Kreo cut-out) – forma lieka atidaryta,
+  // galima pridėti kelis atėmimus iš eilės.
+  const finishCutting = () => {
+    if (cutPts.length >= 3) setDeducts((d) => [...d, cutPts]);
+    setCutPts([]);
   };
 
   const saveForm = () => {
@@ -532,7 +604,8 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       }
     } else if (form.kind === 'area') {
       const u = polygonArea(form.pts);
-      area_m2 = calibrated ? round(u / (unitsPerMeter! * unitsPerMeter!), 3) : 0;
+      const ded = deducts.reduce((s, d) => s + polygonArea(d), 0);
+      area_m2 = calibrated ? round(Math.max(0, u - ded) / (unitsPerMeter! * unitsPerMeter!), 3) : 0;
       unit = 'm²';
       if (!Number.isNaN(th)) { volume_m3 = round(area_m2 * th, 3); unit = 'm³'; }
       // Perimetras – informatyvu visoms ploto pozicijoms, būtina patalpų apdailai
@@ -544,6 +617,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       if (!Number.isNaN(pv)) volume_m3 = round(pv * count, 3);
     }
 
+    const cutNote = form.kind === 'area' && deducts.length > 0 && calibrated
+      ? `${t.pdf.cutoutNote}: −${fmtQty(deducts.reduce((s, d) => s + polygonArea(d), 0) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
+      : null;
     const item: QtoItem = {
       id: uid(),
       source: 'PDF',
@@ -566,6 +642,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       note: [
         !calibrated ? t.pdf.notCalibrated : null,
         form.axesZone ? `${L({ lt: 'Ašys', en: 'Grid' })}: ${form.axesZone}` : null,
+        cutNote,
       ].filter(Boolean).join('; ') || undefined,
     };
     // Patalpos apdaila: grindys + lubos + sienos (su angų atėmimu)
@@ -580,6 +657,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     }
     onItemsChange([...items, item, ...extra]);
     setForm(null);
+    setCutting(false);
+    setCutPts([]);
+    setDeducts([]);
   };
 
   const removeItem = (id: string) => {
@@ -643,8 +723,15 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       return;
     }
     // Prisirišimas (snapping) matavimo įrankiams: pirmiausia ašių sankirtos, po to vektoriai
-    if (tool === 'none' || form) { setHoverPdf(null); return; }
+    if (tool === 'none') { setHoverPdf(null); return; }
+    if (form && !cutting) { setHoverPdf(null); return; }
     const p = toPdfPt(e);
+    // „1-klik“ įrankiams prisirišimas netaikomas – burtas turi pataikyti į tikrąją vietą
+    if (tool === 'wand' || tool === 'line') {
+      snapRef.current = null;
+      setHoverPdf(p);
+      return;
+    }
     const ax = snapToAxes(getAxes(), p, 12 / zoom);
     const next = ax ?? snapIndexRef.current?.snap(p, 9 / zoom)?.p ?? null;
     snapRef.current = next;
@@ -885,13 +972,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     setMatchThumb(null);
     setMatchError(null);
     // Ilgio / ploto matavimui mastelis būtinas – nukreipiame į kalibravimą
-    if ((t === 'length' || t === 'area') && !calibrated) {
+    if ((t === 'length' || t === 'area' || t === 'wand' || t === 'line' || t === 'rect') && !calibrated) {
       setTool('calib');
       setCurrent([]);
       return;
     }
     setTool(tool === t ? 'none' : t);
     setCurrent([]);
+    setScanError(null);
   };
 
   const toolBtn = (t: Tool, icon: React.ReactNode, label: string) => (
@@ -945,6 +1033,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('calib', <Ruler className="h-3.5 w-3.5" />, t.pdf.tools.calib)}
           {toolBtn('length', <Spline className="h-3.5 w-3.5" />, t.pdf.tools.length)}
           {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, t.pdf.tools.area)}
+          {toolBtn('wand', <Wand2 className="h-3.5 w-3.5" />, t.pdf.tools.wand)}
+          {toolBtn('line', <Route className="h-3.5 w-3.5" />, t.pdf.tools.line)}
+          {toolBtn('rect', <RectangleHorizontal className="h-3.5 w-3.5" />, t.pdf.tools.rect)}
           {toolBtn('count', <Hash className="h-3.5 w-3.5" />, t.pdf.tools.count)}
           {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, t.pdf.tools.match)}
           {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, t.pdf.tools.scan)}
@@ -1122,7 +1213,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             className="relative inline-block cursor-crosshair touch-none"
             onClick={handleClick}
             onDoubleClick={(e) => {
-              if (current.length >= 1 && tool !== 'calib') {
+              if (cutting && cutPts.length >= 3) {
+                e.preventDefault();
+                finishCutting();
+                return;
+              }
+              if (current.length >= 1 && tool !== 'calib' && tool !== 'wand' && tool !== 'line') {
                 e.preventDefault();
                 // dvigubo kliko metu paskutiniai du taškai sutampa – nuimame dublikatą ir baigiame
                 let pts = current;
@@ -1132,7 +1228,10 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               }
             }}
             onContextMenu={(e) => {
-              if (current.length || calibPts.length) {
+              if (cutting && cutPts.length) {
+                e.preventDefault();
+                setCutPts((c) => c.slice(0, -1));
+              } else if (current.length || calibPts.length) {
                 e.preventDefault();
                 if (current.length) setCurrent((c) => c.slice(0, -1));
                 else setCalibPts((c) => c.slice(0, -1));
@@ -1158,10 +1257,29 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 return renderShape(s.pdfPoints!, color, s.id, s.pdfKind ?? 'length', label);
               })}
               {/* Dabartinė (daroma) figūra */}
-              {current.length > 0 && renderShape(current, '#0ea5e9', 'current', tool === 'area' ? 'area' : tool === 'count' ? 'count' : 'length',
+              {current.length > 0 && renderShape(current, '#0ea5e9', 'current', tool === 'area' || tool === 'rect' ? 'area' : tool === 'count' ? 'count' : 'length',
                 tool === 'length' && liveLength !== undefined ? `${fmtQty(liveLength, 'm', 2, units)} ${uLabel('m', units)}`
-                  : tool === 'area' && liveArea !== undefined ? `${fmtQty(liveArea, 'm²', 2, units)} ${uLabel('m²', units)}`
+                  : (tool === 'area' || tool === 'rect') && liveArea !== undefined ? `${fmtQty(liveArea, 'm²', 2, units)} ${uLabel('m²', units)}`
                   : tool === 'count' ? `${current.length} ${t.pdf.pcs}` : undefined)}
+              {/* Atidarytos formos figūra (kad atėmimus būtų galima braižyti kontekste) */}
+              {form && form.pts.length >= 2 && renderShape(form.pts, '#0ea5e9', 'form-shape', form.kind)}
+              {/* Atėmimai (cut-out): brūkšninis raudonas kontūras */}
+              {form?.kind === 'area' && deducts.map((d, i) => (
+                <polygon
+                  key={`cut${i}`}
+                  points={d.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
+                  fill="#ef4444" fillOpacity={0.18} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 3"
+                />
+              ))}
+              {cutting && cutPts.length > 0 && (
+                <g>
+                  <polyline
+                    points={cutPts.map((p) => `${p.x * zoom},${p.y * zoom}`).join(' ')}
+                    fill="none" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 3"
+                  />
+                  {cutPts.map((p, i) => <circle key={i} cx={p.x * zoom} cy={p.y * zoom} r={3.5} fill="#ef4444" />)}
+                </g>
+              )}
               {/* Prisirišimo (snapping) indikatorius */}
               {snapIndicator && (
                 <g pointerEvents="none">
@@ -1217,13 +1335,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
               )}
             </svg>
             {/* Tiesioginė ataskaita prie kursoriaus (Bluebeam stilius) */}
-            {hoverPdf && !form && current.length > 0 && calibrated && (tool === 'length' || tool === 'area' || tool === 'count') && (
+            {hoverPdf && !form && current.length > 0 && calibrated && (tool === 'length' || tool === 'area' || tool === 'count' || tool === 'rect') && (
               <div
                 className="pointer-events-none absolute z-20 whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-[11px] font-semibold text-white shadow"
                 style={{ left: hoverPdf.x * zoom + 16, top: hoverPdf.y * zoom + 16 }}
               >
                 {tool === 'length' && `${fmtQty(polylineLength([...current, hoverPdf], false) / unitsPerMeter!, 'm', 2, units)} ${uLabel('m', units)}`}
                 {tool === 'area' && `${fmtQty(polygonArea([...current, hoverPdf]) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`}
+                {tool === 'rect' && `${fmtQty(Math.abs((hoverPdf.x - current[0].x) * (hoverPdf.y - current[0].y)) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`}
                 {tool === 'count' && `${current.length + 1} ${t.pdf.pcs}`}
               </div>
             )}
@@ -1424,7 +1543,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         )}
         {/* Naujo matavimo forma: telefone – lipni apatinė kortelė (bottom sheet) */}
         {form && (
-          <div onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveForm(); } }} className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
+          <div onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (cutting && cutPts.length >= 3) finishCutting(); else saveForm(); } }} className="space-y-2 rounded-xl border border-primary/50 p-3 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[75vh] max-lg:overflow-auto max-lg:rounded-b-none max-lg:border-t-2 max-lg:bg-background max-lg:shadow-[0_-10px_44px_rgba(0,0,0,0.3)]">
             <p className="text-sm font-semibold">
               {form.kind === 'length' ? t.pdf.formLength : form.kind === 'area' ? t.pdf.formArea : `${t.pdf.formCount} (${form.pts.length} ${t.pdf.pcs})`}
             </p>
@@ -1511,6 +1630,39 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 )}
               </div>
             )}
+            {form.kind === 'area' && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 p-2.5 dark:border-rose-900 dark:bg-rose-950">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-rose-900 dark:text-rose-200">
+                    <Scissors className="h-3.5 w-3.5" />{t.pdf.cutoutTitle}
+                  </span>
+                  <button
+                    onClick={() => { if (cutting) finishCutting(); else { setCutting(true); setCutPts([]); } }}
+                    className={cn(
+                      'rounded-md px-2 py-1 text-xs font-semibold',
+                      cutting ? 'bg-rose-600 text-white hover:bg-rose-700' : 'border border-rose-300 text-rose-800 hover:bg-rose-100 dark:text-rose-200',
+                    )}
+                  >
+                    {cutting ? t.pdf.cutoutDone : t.pdf.cutoutStart}
+                  </button>
+                </div>
+                {cutting && (
+                  <p className="mt-1.5 text-[11px] text-rose-800 dark:text-rose-300">
+                    {t.pdf.cutoutHint} ({cutPts.length} {t.pdf.pcs})
+                  </p>
+                )}
+                {deducts.length > 0 && (
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] font-medium text-rose-900 dark:text-rose-200">
+                    <span>
+                      {t.pdf.cutoutRemoved}: −{calibrated
+                        ? `${fmtQty(deducts.reduce((s, d) => s + polygonArea(d), 0) / (unitsPerMeter! * unitsPerMeter!), 'm²', 2, units)} ${uLabel('m²', units)}`
+                        : `${deducts.length}`}
+                    </span>
+                    <button onClick={() => setDeducts([])} className="underline hover:no-underline">{t.pdf.cutoutClear}</button>
+                  </div>
+                )}
+              </div>
+            )}
             {(form.kind === 'length' || form.kind === 'area') && (
               <label className="block text-xs">
                 {t.pdf.fThickness} ({uLabel('m', units)})
@@ -1543,7 +1695,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             </label>
             <div className="flex gap-1.5 pt-1">
               <button onClick={saveForm} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">{t.pdf.add}</button>
-              <button onClick={() => setForm(null)} className="rounded-md border px-3 py-1.5 text-sm">{t.pdf.cancel}</button>
+              <button onClick={() => { setForm(null); setCutting(false); setCutPts([]); setDeducts([]); }} className="rounded-md border px-3 py-1.5 text-sm">{t.pdf.cancel}</button>
             </div>
           </div>
         )}
