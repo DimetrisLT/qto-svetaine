@@ -1,7 +1,7 @@
 import * as cookie from "cookie";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions } from "./lib/cookies";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, publicQuery } from "./middleware";
 import { deleteUser } from "./queries/users";
 import { deleteProjectsByUser } from "./queries/projects";
 import { deleteSharesByUser } from "./queries/shares";
@@ -22,7 +22,8 @@ function clearSessionCookie(ctx: { resHeaders: Headers; req: Request }) {
 }
 
 export const authRouter = createRouter({
-  me: authedQuery.query((opts) => opts.ctx.user),
+  // Vieša: neprisijungus grąžina null (be 401 triukšmo naršyklės konsolėje)
+  me: publicQuery.query((opts) => opts.ctx.user ?? null),
   logout: authedQuery.mutation(async ({ ctx }) => {
     clearSessionCookie(ctx);
     return { success: true };

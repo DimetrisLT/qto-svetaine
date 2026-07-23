@@ -54,6 +54,8 @@ export interface ZiniarastisRow {
   origin: QtoItem['origin'];
   sources: string[];
   detailCount: number;
+  /** Vieneto kaina (Eur) – jei pozicijai nustatyta */
+  price?: number;
 }
 
 export interface ZiniarastisGroup {
@@ -77,7 +79,7 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
   for (const item of items) {
     const groupCode = GROUP_BY_CATEGORY[item.category] ?? '09';
     // Projekto duomenys ir AI skaičiavimai – atskiros pozicijos
-    const key = `${groupCode}|${item.category}|${item.material ?? ''}|${item.unit}|${item.origin}`;
+    const key = `${groupCode}|${item.category}|${item.material ?? ''}|${item.unit}|${item.origin}|${item.price ?? ''}`;
     let row = acc.get(key);
     if (!row) {
       const mat = item.material ? `, ${item.material}` : '';
@@ -90,6 +92,7 @@ export function buildZiniarastis(items: QtoItem[]): ZiniarastisGroup[] {
         origin: item.origin,
         sources: [],
         detailCount: 0,
+        price: item.price,
       };
       acc.set(key, row);
     }

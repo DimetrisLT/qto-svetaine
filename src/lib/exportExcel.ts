@@ -54,14 +54,14 @@ function detailRows(items: QtoItem[], sys: UnitSystem) {
     `${L({ lt: 'Ilgis', en: 'Length' })} (${M})`, `${L({ lt: 'Plotis/storis', en: 'Width/thickness' })} (${M})`, `${L({ lt: 'Aukštis', en: 'Height' })} (${M})`,
     `${L({ lt: 'Plotas', en: 'Area' })} (${M2})`, `${L({ lt: 'Tūris', en: 'Volume' })} (${M3})`,
     `${L({ lt: 'Kiekis', en: 'Qty' })} (${convertUnitLabel('vnt.', sys)})`, `${L({ lt: 'Masa', en: 'Mass' })} (${KG})`,
-    L({ lt: 'Mato vnt.', en: 'Unit' }), L({ lt: 'Pastaba', en: 'Note' }),
+    L({ lt: 'Mato vnt.', en: 'Unit' }), L({ lt: 'Kaina', en: 'Price' }), L({ lt: 'Suma', en: 'Total' }), L({ lt: 'Pastaba', en: 'Note' }),
   ]];
   for (const i of items) {
     rows.push([
       i.source, i.discipline ?? '', originLabel(i.origin), categoryLabel(i.category), i.name, i.material ?? '',
       conv(i.length_m ?? '', 'm', sys), conv((i.width_m ?? i.thickness_m) ?? '', 'm', sys), conv(i.height_m ?? '', 'm', sys),
       conv(i.area_m2 ?? '', 'm²', sys), conv(i.volume_m3 ?? '', 'm³', sys), i.count, conv(i.mass_kg ?? '', 'kg', sys),
-      convertUnitLabel(i.unit, sys), i.note ?? '',
+      convertUnitLabel(i.unit, sys), i.price ?? '', i.price !== undefined ? round(i.price * effectiveQty(i), 2) : '', i.note ?? '',
     ]);
   }
   return rows;
@@ -71,14 +71,20 @@ function ziniarastisRows(items: QtoItem[], sys: UnitSystem) {
   const groups = buildZiniarastis(items);
   const rows: Array<Array<string | number>> = [[
     L({ lt: 'Eil. nr.', en: 'No.' }), L({ lt: 'Darbo pobūdis / pozicija', en: 'Work type / item' }),
-    L({ lt: 'Mato vnt.', en: 'Unit' }), L({ lt: 'Kiekis', en: 'Qty' }), L({ lt: 'Kilmė', en: 'Origin' }), L({ lt: 'Šaltiniai', en: 'Sources' }),
+    L({ lt: 'Mato vnt.', en: 'Unit' }), L({ lt: 'Kiekis', en: 'Qty' }), L({ lt: 'Kaina', en: 'Price' }), L({ lt: 'Suma', en: 'Total' }), L({ lt: 'Kilmė', en: 'Origin' }), L({ lt: 'Šaltiniai', en: 'Sources' }),
   ]];
+  let total = 0;
+  let anyPrice = false;
   for (const { group, rows: grows } of groups) {
-    rows.push([group.code, group.title.toUpperCase(), '', '', '', '']);
+    rows.push([group.code, group.title.toUpperCase(), '', '', '', '', '', '']);
     grows.forEach((r, i) => {
-      rows.push([`${group.code}.${i + 1}`, r.name, convertUnitLabel(r.unit, sys), round(convertValue(r.qty, r.unit, sys), 2), ORIGIN_INFO[r.origin] ? originLabel(r.origin) : '', r.sources.join(', ')]);
+      const price = r.price;
+      const sum = price !== undefined ? round(price * r.qty, 2) : '';
+      if (price !== undefined) { anyPrice = true; total += price * r.qty; }
+      rows.push([`${group.code}.${i + 1}`, r.name, convertUnitLabel(r.unit, sys), round(convertValue(r.qty, r.unit, sys), 2), price ?? '', sum, ORIGIN_INFO[r.origin] ? originLabel(r.origin) : '', r.sources.join(', ')]);
     });
   }
+  if (anyPrice) rows.push(['', L({ lt: 'VISO (be PVM)', en: 'TOTAL (excl. VAT)' }), '', '', '', round(total, 2), '', '']);
   return rows;
 }
 
@@ -97,22 +103,47 @@ function checkRows(checks: CheckResult[]) {
   return rows;
 }
 
-export function exportToExcel(items: QtoItem[], checks: CheckResult[], fileBase?: string) {
+export interface ExportSheetOpts { schedule: boolean; summary: boolean; details: boolean; checks: boolean }
+
+/** Efektyvus kiekis pagal mato vienetą (kainodarai) */
+export function effectiveQty(i: QtoItem): number {
+  if (i.unit === 'm²') return i.area_m2 ?? 0;
+  if (i.unit === 'm') return i.length_m ?? 0;
+  if (i.unit === 'm³') return i.volume_m3 ?? 0;
+  if (i.unit === 'kg') return i.mass_kg ?? 0;
+  return i.count ?? 0;
+}
+
+/** Bendra sąmatos suma (Σ kiekis × vieneto kaina) */
+export function totalEstimate(items: QtoItem[]): number {
+  return items.reduce((s, i) => s + (i.price ?? 0) * effectiveQty(i), 0);
+}
+
+export function exportToExcel(items: QtoItem[], checks: CheckResult[], fileBase?: string, opts?: Partial<ExportSheetOpts>) {
+  const o: ExportSheetOpts = { schedule: true, summary: true, details: true, checks: true, ...opts };
   const sys = getUnitSystem();
   const base = fileBase ?? L({ lt: 'QTO_ziniarastis', en: 'QTO_schedule' });
   const wb = XLSX.utils.book_new();
-  const s0 = XLSX.utils.aoa_to_sheet(ziniarastisRows(items, sys));
-  s0['!cols'] = [{ wch: 9 }, { wch: 52 }, { wch: 10 }, { wch: 12 }, { wch: 20 }];
-  XLSX.utils.book_append_sheet(wb, s0, L({ lt: 'Žiniaraštis', en: 'Schedule' }));
-  const s1 = XLSX.utils.aoa_to_sheet(summaryRows(items, sys));
-  s1['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
-  XLSX.utils.book_append_sheet(wb, s1, L({ lt: 'Santrauka', en: 'Summary' }));
-  const s2 = XLSX.utils.aoa_to_sheet(detailRows(items, sys));
-  s2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 17 }, { wch: 16 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(wb, s2, L({ lt: 'Detaliai', en: 'Details' }));
-  const s3 = XLSX.utils.aoa_to_sheet(checkRows(checks));
-  s3['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 10 }, { wch: 80 }];
-  XLSX.utils.book_append_sheet(wb, s3, L({ lt: 'Savikontrolė', en: 'Self-check' }));
+  if (o.schedule) {
+    const s0 = XLSX.utils.aoa_to_sheet(ziniarastisRows(items, sys));
+    s0['!cols'] = [{ wch: 9 }, { wch: 52 }, { wch: 10 }, { wch: 12 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, s0, L({ lt: 'Žiniaraštis', en: 'Schedule' }));
+  }
+  if (o.summary) {
+    const s1 = XLSX.utils.aoa_to_sheet(summaryRows(items, sys));
+    s1['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, s1, L({ lt: 'Santrauka', en: 'Summary' }));
+  }
+  if (o.details) {
+    const s2 = XLSX.utils.aoa_to_sheet(detailRows(items, sys));
+    s2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 17 }, { wch: 16 }, { wch: 34 }, { wch: 22 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 10 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, s2, L({ lt: 'Detaliai', en: 'Details' }));
+  }
+  if (o.checks) {
+    const s3 = XLSX.utils.aoa_to_sheet(checkRows(checks));
+    s3['!cols'] = [{ wch: 12 }, { wch: 34 }, { wch: 10 }, { wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, s3, L({ lt: 'Savikontrolė', en: 'Self-check' }));
+  }
   XLSX.writeFile(wb, `${base}.xlsx`);
 }
 

@@ -7,6 +7,11 @@ import { uid } from '@/types/qto';
 
 const UNITS: QtoItem['unit'][] = ['vnt.', 'm', 'm²', 'm³', 'kg'];
 
+/** Įtartina eilutė: nerealus kiekis (tikėtina OCR klaida ar kontekstinis skaičius) */
+export function isSuspicious(r: ScannedRow): boolean {
+  return r.qty < 0.5 || r.qty > 1_000_000 || (r.name.replace(/\P{L}/gu, '').length > 0 && r.name.trim().length < 4);
+}
+
 interface Props {
   rows: ScannedRow[];
   title: string;
@@ -30,6 +35,7 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
   };
 
   const selected = rows.filter((r) => r.include).length;
+  const suspicious = rows.filter((r) => r.include && isSuspicious(r));
 
   return (
     <div className="rounded-xl border border-primary/50 p-3 space-y-2">
@@ -55,7 +61,7 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className={`border-t ${r.include ? '' : 'opacity-40'}`} title={r.raw ? `OCR: ${r.raw}` : undefined}>
+              <tr key={r.id} className={`border-t ${r.include ? '' : 'opacity-40'} ${r.include && isSuspicious(r) ? 'bg-amber-50 dark:bg-amber-950/40' : ''}`} title={r.include && isSuspicious(r) ? `${t.report.suspiciousRow}${r.raw ? ` · OCR: ${r.raw}` : ''}` : r.raw ? `OCR: ${r.raw}` : undefined}>
                 <td className="px-2 py-1">
                   <input type="checkbox" checked={r.include} onChange={(e) => update(r.id, { include: e.target.checked })} />
                 </td>
@@ -124,6 +130,14 @@ export default function ScheduleReview({ rows: initial, title, onSave, onCancel 
           </tbody>
         </table>
       </div>
+      {suspicious.length > 0 && (
+        <button
+          onClick={() => setRows((rs) => rs.map((r) => (isSuspicious(r) ? { ...r, include: false } : r)))}
+          className="w-full rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        >
+          ⚠ {t.report.excludeSuspicious} ({suspicious.length})
+        </button>
+      )}
       <div className="flex gap-1.5">
         <button onClick={addRow} className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs hover:bg-muted">
           <Plus className="h-3.5 w-3.5" /> {t.report.addRow}

@@ -71,6 +71,8 @@ export interface QtoItem {
   pdfFile?: string;
   /** Projekto dalis (A, SK, VK, E, Š, V, T, Kita) */
   discipline?: string;
+  /** Vieneto kaina (Eur už mato vnt.) – sąmatos sumai */
+  price?: number;
   note?: string;
   /** OCR žiniaraščio „VISO“ eilutės kandidatinės sumos (trianguliacijai) */
   visoCandidates?: number[];

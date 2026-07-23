@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles, Wand2, Route, RectangleHorizontal, Scissors } from 'lucide-react';
+import { Ruler, Spline, Pentagon, Hash, Trash2, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Check, X, ScanText, ClipboardPlus, Layers, Eye, EyeOff, ScanSearch, Sparkles, Wand2, Route, RectangleHorizontal, Scissors, ChevronDown, ChevronUp } from 'lucide-react';
 import { CATEGORY_INFO, CATEGORY_ORDER, categoryLabel, uid, type ElementCategory, type QtoItem } from '@/types/qto';
 import { dist, polygonArea, polylineLength, netDeductArea, type Pt } from '@/lib/pdf/measure';
 import { fmt, fmtQty, round, uLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, type ScannedRow } from '@/lib/ocr/scanSchedule';
+import { ocrCanvas, parseScheduleText, rowsToItems, extractVisoTotals, warmOcrWorker, type ScannedRow } from '@/lib/ocr/scanSchedule';
 import ScheduleReview from '@/components/ScheduleReview';
 import { suggestForPage, paperFromPoints, unitsPerMeterFor, deviationPct, type ScaleSuggestion } from '@/lib/pdf/scaleDetect';
 import {
@@ -21,6 +21,7 @@ import { rasterWand } from '@/lib/pdf/rasterWand';
 import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
 import { buildRoomFinishItems } from '@/lib/pdf/roomFinishes';
 import { grayscaleFromCanvas, matchTemplate, cropGray, binarizeDilate } from '@/lib/ocr/templateMatch';
+import { MEP_TYPES, mepTypeById } from '@/lib/mep';
 import { useI18n } from '@/i18n/I18nContext';
 import { L } from '@/i18n/store';
 import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
@@ -29,6 +30,8 @@ import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
 pdfjsLib.GlobalWorkerOptions.workerSrc = import.meta.env.DEV
   ? '/pdf.worker.min.mjs'
   : new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+// Nutiliname pdf.js šriftų įspėjimus („TT: undefined function“) – nekritiški, bet teršia konsolę
+pdfjsLib.setVerbosityLevel?.(pdfjsLib.VerbosityLevel.ERRORS);
 
 type Tool = 'none' | 'calib' | 'length' | 'area' | 'count' | 'scan' | 'match' | 'wand' | 'line' | 'rect';
 
@@ -39,6 +42,8 @@ interface SymbolMatch {
   score: number;
   thumb: string;
   excluded: boolean;
+  /** Puslapis (kelių puslapių paieškai); undefined = dabartinis */
+  page?: number;
 }
 
 interface ScanRect {
@@ -129,13 +134,20 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
   const [scanRect, setScanRect] = useState<ScanRect | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
+  const [ocrPct, setOcrPct] = useState<number | null>(null);
   const autoCancelRef = useRef(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [autoScope, setAutoScope] = useState<'page' | 'range'>('page');
+  const [toolsOpen, setToolsOpen] = useState(false); // mobilus įrankių stalčius
+  const [matchScope, setMatchScope] = useState<'page' | 'range'>('page');
+  const [mepTypeId, setMepTypeId] = useState('other'); // MEP simbolio tipas (rozetės, kranai…)
+  const [mepNorm, setMepNorm] = useState<number | null>(null); // m/vnt. preliminari norma (redaguojama)
+  const pendingNameRef = useRef<string | null>(null); // MEP tipo pavadinimas → forma
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ScannedRow[] | null>(null);
   const [reviewTitle, setReviewTitle] = useState('');
   const [scaleSuggestion, setScaleSuggestion] = useState<ScaleSuggestion | null>(null);
+  const [vecCount, setVecCount] = useState<number | null>(null); // kiek vektorių puslapyje (<30 = tikėtina rastrinis)
   const [paperOnlyName, setPaperOnlyName] = useState<string | null>(null);
   const [calibDeviation, setCalibDeviation] = useState<number | null>(null);
   const detectReportedRef = useRef(false);
@@ -298,6 +310,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         if (cancelled) return;
         setPdf(doc);
         setNumPages(doc.numPages);
+        warmOcrWorker(); // OCR variklis kraunamas fone – pirmas skenavimas nebeužtrunka
         setPageNum(1);
         setPageRange(null);
         if (doc.numPages > 5) {
@@ -411,8 +424,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         if (!cancelled && segs) {
           snapIndexRef.current = new SnapIndex(segs);
           segsDataRef.current = segs;
-        }
-      } catch { /* vektorių nėra (skenuotas PDF) – snapping tiesiog neveikia */ }
+          setVecCount(segs.count);
+        } else if (!cancelled) setVecCount(0);
+      } catch { /* vektorių nėra (skenuotas PDF) – snapping tiesiog neveikia */ if (!cancelled) setVecCount(0); }
     });
     return () => { cancelled = true; };
   }, [pdf, pageNum]);
@@ -662,10 +676,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       ? { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length }
       : null;
     const axesZoneVal = centroid ? axisZone(getAxes(), centroid) : null;
+    const pendName = pendingNameRef.current;
+    if (pendName) pendingNameRef.current = null;
     setForm({
       kind, pts,
       category: defCat,
-      name: suggested ?? `${categoryLabel(defCat)} (${t.pdf.pageShort}${pageNum})`,
+      name: pendName ?? suggested ?? `${categoryLabel(defCat)} (${t.pdf.pageShort}${pageNum})`,
       height: kind === 'length' ? (units === 'imperial' ? '10' : '3') : '',
       thickness: '',
       perArea: '', perVolume: '',
@@ -914,25 +930,53 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       tcan.getContext('2d')!.drawImage(c, tx, ty, tw, th, 0, 0, tw, th);
       setMatchThumb(tcan.toDataURL());
 
-      const found = await matchTemplate(g, iw, ih, tpl, tw, th, {
-        threshold: 0.6,
-        onProgress: setMatchProgress,
-      });
-      if (found.length === 0) {
+      // Paieškos apimtis: dabartinis puslapis arba visas diapazonas
+      const pages = matchScope === 'range'
+        ? Array.from({ length: rangeHiBound - rangeLoBound + 1 }, (_, i) => rangeLoBound + i)
+        : [pageNum];
+      const results: SymbolMatch[] = [];
+      for (let pi = 0; pi < pages.length; pi++) {
+        const pn = pages[pi];
+        let pc = c, pg = g, pw = iw;
+        let s2 = s;
+        if (pn !== pageNum) {
+          // Kitas puslapis – atskira drobė (tas pats šablonas, mastelis pagal puslapio plotį)
+          const page2 = await pdf.getPage(pn);
+          const vp2 = page2.getViewport({ scale: 1 });
+          s2 = Math.min(2, 760 / vp2.width);
+          const viewport2 = page2.getViewport({ scale: s2 });
+          const c2 = document.createElement('canvas');
+          c2.width = Math.floor(viewport2.width);
+          c2.height = Math.floor(viewport2.height);
+          const c2ctx = c2.getContext('2d')!;
+          c2ctx.fillStyle = '#fff';
+          c2ctx.fillRect(0, 0, c2.width, c2.height);
+          const rp2: any = { canvas: c2, canvasContext: c2ctx, viewport: viewport2 };
+          if (ocgConfigRef.current) rp2.optionalContentConfigPromise = Promise.resolve(ocgConfigRef.current);
+          await page2.render(rp2).promise;
+          const gr = grayscaleFromCanvas(c2);
+          pc = c2; pg = binarizeDilate(gr.g, gr.w, gr.h); pw = gr.w;
+        }
+        const found = await matchTemplate(pg, pw, pc.height, tpl, tw, th, {
+          threshold: 0.72, // pakeltas slenkstis – mažiau klaidingų atitikmenų (sienų fragmentų, žymų)
+          onProgress: (p) => setMatchProgress((pi + p) / pages.length),
+        });
+        // Miniatiūros su kontekstu (1,8× šablono)
+        for (const m of found) {
+          const cw = Math.round(tw * 1.8), ch = Math.round(th * 1.8);
+          const cx = Math.max(0, Math.min(pw - cw, Math.round(m.x - cw / 2)));
+          const cy = Math.max(0, Math.min(pc.height - ch, Math.round(m.y - ch / 2)));
+          const t2 = document.createElement('canvas');
+          t2.width = cw; t2.height = ch;
+          t2.getContext('2d')!.drawImage(pc, cx, cy, cw, ch, 0, 0, cw, ch);
+          results.push({ x: m.x / s2, y: m.y / s2, score: m.score, thumb: t2.toDataURL(), excluded: m.score < 0.8, page: pn }); // silpni – automatiškai išmesti
+        }
+      }
+      if (results.length === 0) {
         setMatchError(t.pdf.symNone);
         setMatching(false);
         return;
       }
-      // Miniatiūros su kontekstu (1,8× šablono)
-      const results: SymbolMatch[] = found.map((m) => {
-        const cw = Math.round(tw * 1.8), ch = Math.round(th * 1.8);
-        const cx = Math.max(0, Math.min(iw - cw, Math.round(m.x - cw / 2)));
-        const cy = Math.max(0, Math.min(ih - ch, Math.round(m.y - ch / 2)));
-        const t2 = document.createElement('canvas');
-        t2.width = cw; t2.height = ch;
-        t2.getContext('2d')!.drawImage(c, cx, cy, cw, ch, 0, 0, cw, ch);
-        return { x: m.x / s, y: m.y / s, score: m.score, thumb: t2.toDataURL(), excluded: false };
-      });
       setMatchResults(results);
     } catch (err) {
       console.error(err);
@@ -944,10 +988,59 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
 
   const acceptMatches = () => {
     if (!matchResults) return;
-    const pts = matchResults.filter((m) => !m.excluded).map((m) => ({ x: m.x, y: m.y }));
+    const accepted = matchResults.filter((m) => !m.excluded);
+    const byPage = new Map<number, Pt[]>();
+    for (const m of accepted) {
+      const pn = m.page ?? pageNum;
+      if (!byPage.has(pn)) byPage.set(pn, []);
+      byPage.get(pn)!.push({ x: m.x, y: m.y });
+    }
     setMatchResults(null);
     setMatchThumb(null);
-    if (pts.length > 0) openForm('count', pts);
+    if (byPage.size === 0) return;
+    const mep = mepTypeById(mepTypeId);
+    const baseName = mepTypeId === 'other' ? t.pdf.tools.match : mep.label();
+    const totalCount = accepted.length;
+    // Preliminarūs kabeliai/vamzdžiai pagal tipą ir normą (m/vnt.)
+    const prelimItem = (): QtoItem | null => {
+      if (!mep.prelim || mepNorm === null || mepNorm <= 0) return null;
+      return {
+        id: uid(),
+        source: 'PDF',
+        category: 'other',
+        name: `${mep.prelim.label()} – ${totalCount} × ${mepNorm} m`,
+        length_m: totalCount * mepNorm,
+        unit: 'm',
+        discipline,
+        origin: 'ai',
+        note: t.pdf.prelimNote,
+      };
+    };
+    if (byPage.size === 1 && byPage.has(pageNum)) {
+      const pre = prelimItem();
+      if (pre) onItemsChange([...items, pre]);
+      if (mepTypeId !== 'other') pendingNameRef.current = baseName;
+      openForm('count', byPage.get(pageNum)!);
+      return;
+    }
+    // Keli puslapiai – po vieną „vnt.“ poziciją kiekvienam puslapiui
+    const newItems: QtoItem[] = [...byPage.entries()].map(([pn, pts]) => ({
+      id: uid(),
+      source: 'PDF',
+      category: 'other',
+      name: `${baseName} (${t.pdf.pageShort}${pn})`,
+      count: pts.length,
+      unit: 'vnt.',
+      pdfKind: 'count',
+      pdfPoints: pts,
+      pdfPage: pn,
+      pdfFile: fileId,
+      discipline,
+      origin: 'ai',
+      note: !calibrated ? t.pdf.notCalibrated : undefined,
+    }));
+    const pre = prelimItem();
+    onItemsChange([...items, ...newItems, ...(pre ? [pre] : [])]);
   };
 
   const runScan = async (r: ScanRect) => {
@@ -957,9 +1050,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     if (w < 20 || h < 10) return;
     setScanning(true);
     setScanError(null);
+    setOcrPct(null);
     try {
       const page = await pdf.getPage(pageNum);
-      const scale = 3; // ~216 dpi – pakanka OCR
+      // ~144–216 dpi užtenka OCR; ribojame drobę (~1600 px pločio), kad didelė sritis netruktų minutes
+      const scale = Math.min(3, Math.max(1.5, 1600 / w));
       const c = document.createElement('canvas');
       c.width = Math.ceil(w * scale);
       c.height = Math.ceil(h * scale);
@@ -971,7 +1066,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         viewport,
         transform: [1, 0, 0, 1, -Math.min(r.x0, r.x1) * scale, -Math.min(r.y0, r.y1) * scale],
       }).promise;
-      const text = await ocrCanvas(c);
+      const text = await ocrCanvas(c, setOcrPct);
       setScanPreview(c.toDataURL('image/png'));
       const rows = parseScheduleText(text);
       if (rows.length === 0) {
@@ -1147,9 +1242,17 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           {toolBtn('length', <Spline className="h-3.5 w-3.5" />, t.pdf.tools.length)}
           {toolBtn('area', <Pentagon className="h-3.5 w-3.5" />, t.pdf.tools.area)}
           {toolBtn('wand', <Wand2 className="h-3.5 w-3.5" />, t.pdf.tools.wand)}
+          {toolBtn('count', <Hash className="h-3.5 w-3.5" />, t.pdf.tools.count)}
+          {/* Mobiliajame – stalčius „Daugiau“; desktope viskas kaip buvo */}
+          <button
+            onClick={() => setToolsOpen((v) => !v)}
+            className={`flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors md:hidden ${toolsOpen ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'}`}
+          >
+            {toolsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}{t.pdf.moreTools}
+          </button>
+          <span className={`${toolsOpen ? 'contents' : 'hidden'} md:contents`}>
           {toolBtn('line', <Route className="h-3.5 w-3.5" />, t.pdf.tools.line)}
           {toolBtn('rect', <RectangleHorizontal className="h-3.5 w-3.5" />, t.pdf.tools.rect)}
-          {toolBtn('count', <Hash className="h-3.5 w-3.5" />, t.pdf.tools.count)}
           {toolBtn('match', <ScanSearch className="h-3.5 w-3.5" />, t.pdf.tools.match)}
           {toolBtn('scan', <ScanText className="h-3.5 w-3.5" />, t.pdf.tools.scan)}
           <button
@@ -1169,6 +1272,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
             <option value="page">{t.pdf.autoScopePage} {pageNum}</option>
             <option value="range">{t.pdf.autoScopeRange} {rangeLoBound}–{rangeHiBound}</option>
           </select>
+          </span>
           <span className="mx-1 h-5 w-px bg-border" />
           <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomOut className="h-3.5 w-3.5" /></button>
           <button onClick={() => setZoom((z) => Math.min(4, z + 0.25))} className="shrink-0 rounded-lg border p-2 hover:bg-muted"><ZoomIn className="h-3.5 w-3.5" /></button>
@@ -1238,20 +1342,25 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
           </span>
         </div>
 
-        {!calibrated && scaleSuggestion && (
-          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-            <span>
-              {t.pdf.detected} <b>{scaleSuggestion.paperName}</b> {t.pdf.sheetWord} <b>1:{scaleSuggestion.scale}</b>.
-            </span>
-            <button
-              onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter, 'page'); setCalibDeviation(null); }}
-              className="rounded-md bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700"
-            >
-              {t.pdf.applyScale}
-            </button>
-            <span className="text-emerald-800/70 dark:text-emerald-300/70">{t.pdf.calibManual}</span>
-          </div>
-        )}
+        {!calibrated && scaleSuggestion && (() => {
+          const cautious = vecCount !== null && vecCount < 30; // mažai vektorių – mastelis galimai klaidingas
+          return (
+            <div className={`mb-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs ${cautious
+              ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200'
+              : 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'}`}>
+              <span>
+                {cautious ? t.pdf.scalePossible : t.pdf.detected} <b>{scaleSuggestion.paperName}</b> {t.pdf.sheetWord} <b>1:{scaleSuggestion.scale}</b>.
+              </span>
+              <button
+                onClick={() => { onCalibrate(scaleSuggestion.unitsPerMeter, 'page'); setCalibDeviation(null); }}
+                className={`rounded-md px-2.5 py-1 font-semibold text-white ${cautious ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              >
+                {t.pdf.applyScale}
+              </button>
+              <span className={cautious ? 'text-amber-800/70 dark:text-amber-300/70' : 'text-emerald-800/70 dark:text-emerald-300/70'}>{cautious ? t.pdf.calibCheck : t.pdf.calibManual}</span>
+            </div>
+          );
+        })()}
         {!calibrated && !scaleSuggestion && (dimScale || ocrScale) && (
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200">
             {ocrScale ? (
@@ -1432,7 +1541,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 </g>
               )}
               {/* Simbolių paieškos atitikmenys */}
-              {matchResults?.map((m, i) => (
+              {matchResults?.filter((m) => (m.page ?? pageNum) === pageNum).map((m, i) => (
                 <g key={`m${i}`} pointerEvents="none" opacity={m.excluded ? 0.35 : 1}>
                   <circle cx={m.x * zoom} cy={m.y * zoom} r={8} fill={m.excluded ? '#94a3b8' : '#f59e0b'} fillOpacity={0.3}
                     stroke={m.excluded ? '#94a3b8' : '#f59e0b'} strokeWidth={2} />
@@ -1570,7 +1679,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">{t.pdf.ocrFirst}</p>
+              <div className="mt-2 space-y-1.5">
+                {ocrPct !== null ? (
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${ocrPct}%` }} />
+                  </div>
+                ) : null}
+                <p className="text-xs text-muted-foreground">{ocrPct !== null ? `${ocrPct}%` : t.pdf.ocrFirst}</p>
+              </div>
             )}
           </div>
         )}
@@ -1598,7 +1714,14 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         {/* Simbolių paieška (#1) */}
         {tool === 'match' && !matching && !matchResults && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            {t.pdf.matchHintA} <b>{t.pdf.oneSymbol}</b> {t.pdf.matchHintB}
+            <p>{t.pdf.matchHintA} <b>{t.pdf.oneSymbol}</b> {t.pdf.matchHintB}</p>
+            <label className="mt-1.5 flex items-center gap-1.5">
+              {t.pdf.autoScopeHint}:
+              <select value={matchScope} onChange={(e) => setMatchScope(e.target.value as 'page' | 'range')} className="rounded border bg-background px-1 py-0.5 text-foreground">
+                <option value="page">{t.pdf.autoScopePage} {pageNum}</option>
+                <option value="range">{t.pdf.autoScopeRange} {rangeLoBound}–{rangeHiBound}</option>
+              </select>
+            </label>
           </div>
         )}
         {matching && (
@@ -1623,6 +1746,9 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   {t.pdf.found} {matchResults.filter((m) => !m.excluded).length} {t.pdf.foundOf} {matchResults.length}
                 </p>
                 <p className="text-[11px] text-muted-foreground">{t.pdf.thumbRemove}</p>
+                {matchResults.some((m) => m.excluded) && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300">{t.pdf.weakAutoExcluded}: {matchResults.filter((m) => m.excluded).length}</p>
+                )}
               </div>
             </div>
             <div className="mb-3 grid max-h-56 grid-cols-4 gap-1.5 overflow-auto">
@@ -1634,9 +1760,38 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   title={`${t.pdf.similarity} ${(m.score * 100).toFixed(0)} %`}
                 >
                   <img src={m.thumb} alt={`atitikmuo ${i + 1}`} className="w-full" />
+                  <span className={`absolute bottom-0 right-0 rounded-tl px-1 text-[9px] font-bold ${m.score >= 0.8 ? 'bg-emerald-600/90 text-white' : 'bg-amber-500/90 text-white'}`}>{(m.score * 100).toFixed(0)}</span>
                   {m.excluded && <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-red-600">✕</span>}
                 </button>
               ))}
+            </div>
+            {/* MEP simbolio tipas + preliminari norma */}
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+              <label className="flex items-center gap-1.5">
+                {t.pdf.mepType}:
+                <select
+                  value={mepTypeId}
+                  onChange={(e) => {
+                    setMepTypeId(e.target.value);
+                    const mt = mepTypeById(e.target.value);
+                    setMepNorm(mt.prelim ? mt.prelim.defaultNorm : null);
+                  }}
+                  className="rounded border bg-background px-1.5 py-1 text-foreground"
+                >
+                  {MEP_TYPES.map((mt) => <option key={mt.id} value={mt.id}>{mt.label()}</option>)}
+                </select>
+              </label>
+              {mepTypeById(mepTypeId).prelim && mepNorm !== null && (
+                <label className="flex items-center gap-1.5 text-muted-foreground">
+                  {t.pdf.mepNorm}:
+                  <input
+                    type="number" step="any" min="0" value={mepNorm}
+                    onChange={(e) => setMepNorm(Number(e.target.value.replace(',', '.')))}
+                    className="w-16 rounded border bg-background px-1 py-0.5 text-foreground"
+                  />
+                  m/vnt.
+                </label>
+              )}
             </div>
             <div className="flex gap-2">
               <button

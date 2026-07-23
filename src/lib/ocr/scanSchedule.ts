@@ -3,10 +3,17 @@ import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { uid, type ElementCategory, type QtoItem } from '@/types/qto';
 
 let workerPromise: Promise<Worker> | null = null;
+let progressCb: ((pct: number) => void) | null = null;
 
 function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker('eng')
+    workerPromise = createWorker('eng', 1, {
+      logger: (m: { status?: string; progress?: number }) => {
+        if (m.status === 'recognizing text' && typeof m.progress === 'number' && progressCb) {
+          progressCb(Math.round(m.progress * 100));
+        }
+      },
+    })
       .then(async (w) => {
         // SPARSE_TEXT – suranda visus teksto fragmentus (lentelių langelius),
         // kuriuos įprastas automatinis segmentavimas praleidžia
@@ -19,6 +26,11 @@ function getWorker(): Promise<Worker> {
       });
   }
   return workerPromise;
+}
+
+/** Iš anksto įkelia OCR variklį (kviečiama atsidarius PDF) – pirmas skenavimas nebeužtrunka */
+export function warmOcrWorker(): void {
+  void getWorker().catch(() => { /* tyliai – worker susikurs vėliau */ });
 }
 
 /** Iš TSV žodžių atkuria teksto eilutes, grupuodamas pagal Y koordinatę */
@@ -50,11 +62,16 @@ function tsvToLines(tsv: string): string {
 }
 
 /** OCR nuskaitymas iš canvas elemento (TSV + eilučių atkūrimas pagal Y) */
-export async function ocrCanvas(canvas: HTMLCanvasElement): Promise<string> {
-  const worker = await getWorker();
-  const res = await worker.recognize(canvas, {}, { text: true, tsv: true });
-  const fromTsv = res.data.tsv ? tsvToLines(res.data.tsv) : '';
-  return fromTsv.trim().length > 0 ? fromTsv : res.data.text;
+export async function ocrCanvas(canvas: HTMLCanvasElement, onProgress?: (pct: number) => void): Promise<string> {
+  progressCb = onProgress ?? null;
+  try {
+    const worker = await getWorker();
+    const res = await worker.recognize(canvas, {}, { text: true, tsv: true });
+    const fromTsv = res.data.tsv ? tsvToLines(res.data.tsv) : '';
+    return fromTsv.trim().length > 0 ? fromTsv : res.data.text;
+  } finally {
+    progressCb = null;
+  }
 }
 
 export interface ScannedRow {

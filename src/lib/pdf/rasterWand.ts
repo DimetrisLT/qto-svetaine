@@ -22,6 +22,35 @@ export function rasterWand(rawSegs: Segments, p: Pt, pageW: number, pageH: numbe
   while (W * H > 25_000_000 && S > 1.5) { S /= 2; W = Math.ceil(pageW * S) + 2 * PAD; H = Math.ceil(pageH * S) + 2 * PAD; }
   if (W < 16 || H < 16) return null;
 
+  // Bandome su vis storesniu rašalu: plonos sienos (be dilatacijos) išlaiko tikslumą;
+  // pratekus pro plyšius – dilatuojame ir bandome dar kartą (morfologinis uždarymas).
+  const base = plotGrid(segs, W, H, S, PAD);
+  for (let dil = 0; dil <= 2; dil++) {
+    const grid = dilate(base, W, H, dil);
+    const pts = fillAndTrace(grid, W, H, S, PAD, p);
+    if (pts) return snapFit(pts, segs);
+  }
+  return null;
+}
+
+/** Vieno lygio dilatacija (8-jungumas), pakartota `times` kartų – užsandarina plyšius */
+function dilate(src: Uint8Array, W: number, H: number, times: number): Uint8Array {
+  let cur = new Uint8Array(src);
+  for (let t = 0; t < times; t++) {
+    const out = new Uint8Array(cur);
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        if (cur[y * W + x] !== 1) continue;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) out[(y + dy) * W + x + dx] = 1;
+      }
+    }
+    cur = out;
+  }
+  return cur;
+}
+
+/** Vektorių rastravimas į ląstelių tinklelį (3×3 teptukas) */
+function plotGrid(segs: Segments, W: number, H: number, S: number, PAD: number): Uint8Array {
   const grid = new Uint8Array(W * H); // 0 tuščia · 1 rašalas · 2 sritis
   const plot = (x: number, y: number) => {
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
@@ -42,7 +71,11 @@ export function rasterWand(rawSegs: Segments, p: Pt, pageW: number, pageH: numbe
       plot(Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t));
     }
   }
+  return grid;
+}
 
+/** Užliejimas iš taško + Moore kontūras + DP supaprastinimas; null jei prateka į rėmelį */
+function fillAndTrace(grid: Uint8Array, W: number, H: number, S: number, PAD: number, p: Pt): Pt[] | null {
   // Užliejimas (4-jungumas) nuo sėklinio taško
   let sx = Math.round(p.x * S) + PAD, sy = Math.round(p.y * S) + PAD;
   if (sx < 1 || sy < 1 || sx >= W - 1 || sy >= H - 1) return null;
@@ -115,6 +148,27 @@ export function rasterWand(rawSegs: Segments, p: Pt, pageW: number, pageH: numbe
   for (let i = 0; i < chain.length; i += 2) pts.push({ x: (chain[i] + 0.5 - PAD) / S, y: (chain[i + 1] + 0.5 - PAD) / S });
   const simp = douglasPeucker(pts, 1.2 / S);
   return simp.length >= 3 ? simp : null;
+}
+
+/** Kontūro „snap-fit": kiekviena viršūnė projektuojama ant artimiausio segmento (≤2,5 pt) –
+ * rastrinis kontūras „prilimpa“ prie tikrųjų sienų linijų (taisyklios kraštinės). */
+function snapFit(poly: Pt[], segs: Segments): Pt[] {
+  const d = segs.data;
+  const R = 2.5;
+  return poly.map((v) => {
+    let best = v, bestD2 = R * R;
+    for (let s = 0; s < segs.count; s++) {
+      const x1 = d[s * 4], y1 = d[s * 4 + 1], x2 = d[s * 4 + 2], y2 = d[s * 4 + 3];
+      const dx = x2 - x1, dy = y2 - y1;
+      const len2 = dx * dx + dy * dy || 1e-9;
+      let t = ((v.x - x1) * dx + (v.y - y1) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const px = x1 + t * dx, py = y1 + t * dy;
+      const dd = (v.x - px) * (v.x - px) + (v.y - py) * (v.y - py);
+      if (dd < bestD2) { bestD2 = dd; best = { x: px, y: py }; }
+    }
+    return best;
+  });
 }
 
 /** Douglas–Peucker supaprastinimas (iteratyvus) */
