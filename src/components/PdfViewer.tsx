@@ -21,7 +21,8 @@ import { rasterWand } from '@/lib/pdf/rasterWand';
 import { detectAxes, snapToAxes, axisZone, type AxisGrid } from '@/lib/pdf/axes';
 import { buildRoomFinishItems } from '@/lib/pdf/roomFinishes';
 import { grayscaleFromCanvas, matchTemplate, cropGray, binarizeDilate } from '@/lib/ocr/templateMatch';
-import { MEP_TYPES, mepTypeById } from '@/lib/mep';
+import { MEP_TYPES, mepTypeById, normFor, saveNorm } from '@/lib/mep';
+import { suggestPrices } from '@/lib/priceLibrary';
 import { useI18n } from '@/i18n/I18nContext';
 import { L } from '@/i18n/store';
 import { toMeters as inputToMeters, useUnitSystem } from '@/lib/units';
@@ -986,6 +987,12 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
     }
   };
 
+  /** Automatinė kaina iš asmeninės bibliotekos (pavadinimo panašumas ≥0.45, vienetas sutampa) */
+  const autoPrice = (name: string, unit: string): number | undefined => {
+    const s = suggestPrices(name, unit, 1)[0];
+    return s ? s.entry.price : undefined;
+  };
+
   const acceptMatches = () => {
     if (!matchResults) return;
     const accepted = matchResults.filter((m) => !m.excluded);
@@ -1011,9 +1018,13 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
         name: `${mep.prelim.label()} – ${totalCount} × ${mepNorm} m`,
         length_m: totalCount * mepNorm,
         unit: 'm',
+        pdfKind: 'length',
+        pdfPage: pageNum,
+        pdfFile: fileId,
         discipline,
         origin: 'ai',
         note: t.pdf.prelimNote,
+        price: autoPrice(mep.prelim.label(), 'm'),
       };
     };
     if (byPage.size === 1 && byPage.has(pageNum)) {
@@ -1038,6 +1049,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
       discipline,
       origin: 'ai',
       note: !calibrated ? t.pdf.notCalibrated : undefined,
+      price: autoPrice(baseName, 'vnt.'),
     }));
     const pre = prelimItem();
     onItemsChange([...items, ...newItems, ...(pre ? [pre] : [])]);
@@ -1773,8 +1785,7 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   value={mepTypeId}
                   onChange={(e) => {
                     setMepTypeId(e.target.value);
-                    const mt = mepTypeById(e.target.value);
-                    setMepNorm(mt.prelim ? mt.prelim.defaultNorm : null);
+                    setMepNorm(normFor(e.target.value)); // vartotojo anksčiau pataisyta arba numatytoji
                   }}
                   className="rounded border bg-background px-1.5 py-1 text-foreground"
                 >
@@ -1786,7 +1797,11 @@ export default function PdfViewer({ fileId, file, discipline, unitsPerMeter, onC
                   {t.pdf.mepNorm}:
                   <input
                     type="number" step="any" min="0" value={mepNorm}
-                    onChange={(e) => setMepNorm(Number(e.target.value.replace(',', '.')))}
+                    onChange={(e) => {
+                      const v = Number(e.target.value.replace(',', '.'));
+                      setMepNorm(v);
+                      if (v > 0) saveNorm(mepTypeId, v); // įsimenama kitiems kartams
+                    }}
                     className="w-16 rounded border bg-background px-1 py-0.5 text-foreground"
                   />
                   m/vnt.

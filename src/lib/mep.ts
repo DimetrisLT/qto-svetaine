@@ -70,3 +70,23 @@ export const MEP_TYPES: MepType[] = [
 export function mepTypeById(id: string): MepType {
   return MEP_TYPES.find((t) => t.id === id) ?? MEP_TYPES[0];
 }
+
+// ---- Normų išsaugojimas (vartotojo pataisytos m/vnt. reikšmės) ----
+const NORM_KEY = 'qto-mep-norms';
+
+export function loadNorms(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(NORM_KEY) ?? '{}'); } catch { return {}; }
+}
+
+export function normFor(typeId: string): number | null {
+  const t = mepTypeById(typeId);
+  if (!t.prelim) return null;
+  const saved = loadNorms()[typeId];
+  return typeof saved === 'number' && saved > 0 ? saved : t.prelim.defaultNorm;
+}
+
+export function saveNorm(typeId: string, norm: number): void {
+  const all = loadNorms();
+  all[typeId] = norm;
+  localStorage.setItem(NORM_KEY, JSON.stringify(all));
+}
