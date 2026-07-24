@@ -8,6 +8,7 @@ import {
   type SavedProject,
 } from '@/lib/projectStore';
 import { useAuth } from '@/hooks/useAuth';
+import { usePriceLibrarySync } from '@/hooks/usePriceLibrarySync';
 import { trpc } from '@/providers/trpc';
 import ThemeToggle from '@/components/ThemeToggle';
 import UnitToggle from '@/components/UnitToggle';
@@ -43,6 +44,7 @@ export default function ToolPage() {
 
   // --- Debesies integracija (portalas) ---
   const { isAuthenticated } = useAuth();
+  usePriceLibrarySync();
   const [searchParams] = useSearchParams();
   const cloudId = Number(searchParams.get('project')) || null;
   const [cloudName, setCloudName] = useState<string | null>(null);

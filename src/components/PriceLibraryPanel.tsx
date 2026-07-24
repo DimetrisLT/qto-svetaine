@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BookMarked, Trash2, Upload } from 'lucide-react';
 import { L } from '@/i18n/store';
 import { loadLibrary, removeEntry, importPriceFile, type PriceEntry } from '@/lib/priceLibrary';
+import { useAuth } from '@/hooks/useAuth';
 
 /** Įkainių bibliotekos valdymo panelė (ataskaitos skyriuje) */
 export default function PriceLibraryPanel() {
@@ -20,6 +21,8 @@ export default function PriceLibraryPanel() {
       colName: 'Pavadinimas',
       colUnit: 'Vnt.',
       colPrice: 'Kaina',
+      cloudOn: '☁ Sinchronizuojama su paskyra (veikia visuose įrenginiuose)',
+      cloudOff: 'Kainos saugomos tik šiame įrenginyje – prisijunkite sinchronizavimui',
     },
     en: {
       title: 'Price library',
@@ -35,13 +38,23 @@ export default function PriceLibraryPanel() {
       colName: 'Name',
       colUnit: 'Unit',
       colPrice: 'Price',
+      cloudOn: '☁ Synced with your account (works on all devices)',
+      cloudOff: 'Prices are stored on this device only – sign in to sync',
     },
   });
+  const { isAuthenticated } = useAuth();
   const [entries, setEntries] = useState<PriceEntry[]>(loadLibrary);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Atnaujinti sąrašą, kai debesų sinchronizacija sulieja biblioteką
+  useEffect(() => {
+    const refresh = () => setEntries(loadLibrary());
+    window.addEventListener('qto-price-lib-synced', refresh);
+    return () => window.removeEventListener('qto-price-lib-synced', refresh);
+  }, []);
 
   const onImport = async (f: File) => {
     setBusy(true);
@@ -94,6 +107,9 @@ export default function PriceLibraryPanel() {
         </div>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">{t.hint}</p>
+      <p className={`mt-0.5 text-[11px] ${isAuthenticated ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+        {isAuthenticated ? t.cloudOn : t.cloudOff}
+      </p>
       {msg && <p className="mt-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">{msg}</p>}
       {open && (
         <div className="mt-3 max-h-72 overflow-auto rounded-lg border">

@@ -8,6 +8,7 @@ import {
   bigint,
   int,
   json,
+  double,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -71,6 +72,22 @@ export const projectVersions = mysqlTable("project_versions", {
 
 export type ProjectVersion = typeof projectVersions.$inferSelect;
 export type InsertProjectVersion = typeof projectVersions.$inferInsert;
+
+/** Vartotojo įkainių biblioteka (sinchronizuojama tarp įrenginių) */
+export const priceEntries = mysqlTable("price_entries", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  name: varchar("name", { length: 500 }).notNull(),
+  unit: varchar("unit", { length: 32 }).notNull(),
+  price: double("price").notNull(), // Eur už vnt.
+  note: text("note"),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type PriceEntryRow = typeof priceEntries.$inferSelect;
 
 // TODO: Add your tables here. See docs/Database.md for schema examples and patterns.
 //

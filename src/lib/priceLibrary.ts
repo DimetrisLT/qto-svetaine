@@ -28,6 +28,19 @@ export function loadLibrary(): PriceEntry[] {
 
 export function saveLibrary(entries: PriceEntry[]): void {
   localStorage.setItem(KEY, JSON.stringify(entries));
+  // Pranešama debesų sinchronizavimo kabliui (usePriceLibrarySync)
+  try { window.dispatchEvent(new CustomEvent('qto-price-lib-changed')); } catch { /* SSR */ }
+}
+
+/** Sulieja vietinę ir debesies bibliotekas: naujesnis įrašas laimi (raktas name+unit) */
+export function mergeLibraries(local: PriceEntry[], cloud: PriceEntry[]): PriceEntry[] {
+  const map = new Map<string, PriceEntry>();
+  for (const e of [...cloud, ...local]) {
+    const k = e.name.trim().toLowerCase() + '|' + e.unit;
+    const prev = map.get(k);
+    if (!prev || (e.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) map.set(k, e);
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Prideda arba atnaujina įrašą (raktas: pavadinimas+vnt., case-insensitive) */
