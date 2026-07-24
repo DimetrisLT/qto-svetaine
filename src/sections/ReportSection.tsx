@@ -10,7 +10,8 @@ import EditItemDialog from '@/components/EditItemDialog';
 import PrintReport from '@/components/PrintReport';
 import CarbonCard from '@/components/CarbonCard';
 import { runSelfChecks } from '@/lib/selfCheck';
-import { buildCsv, exportToExcel, totalEstimate, type ExportSheetOpts } from '@/lib/exportExcel';
+import { buildCsv, exportToExcel, totalEstimate, estimateByDiscipline, getVatRate, setVatRate, type ExportSheetOpts } from '@/lib/exportExcel';
+import { disciplineLabel } from '@/types/qto';
 import type { QtoItem, SourceMeta, SourceType } from '@/types/qto';
 import { useI18n } from '@/i18n/I18nContext';
 import { useState } from 'react';
@@ -30,6 +31,7 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState<QtoItem | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [, forceRerender] = useState(0);
   const [verifyFilter, setVerifyFilter] = useState<'all' | 'todo' | 'done'>('all');
   // Excel eksporto lapų nuostatos (išsaugojamos naršyklėje)
   const [sheetOpts, setSheetOpts] = useState<ExportSheetOpts>(() => {
@@ -68,10 +70,43 @@ export default function ReportSection({ itemsBySource, metas, onDeleteItem, onAd
     <div className="space-y-6">
       <SummaryCards items={items} />
       {items.some((i) => i.price !== undefined) && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950">
-          <span className="font-semibold">{t.report.estimateTotal}:</span>
-          <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{totalEstimate(items).toFixed(2)} €</span>
-          <span className="text-xs text-muted-foreground">{t.report.estimateHint}</span>
+        <div className="space-y-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+            <span className="font-semibold">{t.report.estimateTotal}:</span>
+            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{totalEstimate(items).toFixed(2)} €</span>
+            <span className="text-xs text-muted-foreground">{t.report.estimateHint}</span>
+          </div>
+          {(() => {
+            const byD = estimateByDiscipline(items).filter((d) => d.total > 0);
+            const tot = totalEstimate(items);
+            const vat = getVatRate();
+            return (
+              <>
+                {byD.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">{t.report.byDiscipline}:</span>
+                    {byD.map((d) => (
+                      <span key={d.code} className="rounded-full border border-emerald-400/60 bg-white/60 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                        {disciplineLabel(d.code)}: {d.total.toFixed(2)} €
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  <label className="flex items-center gap-1">
+                    {t.report.vatRate}:
+                    <input
+                      type="number" step="any" min="0" max="100" defaultValue={vat}
+                      onChange={(e) => { const v = Number(e.target.value.replace(',', '.')); if (Number.isFinite(v)) { setVatRate(v); forceRerender((n) => n + 1); } }}
+                      className="w-14 rounded border bg-background px-1 py-0.5"
+                    /> %
+                  </label>
+                  <span>{t.report.vatAmount}: {(tot * vat / 100).toFixed(2)} €</span>
+                  <span className="font-bold text-emerald-800 dark:text-emerald-200">{t.report.totalWithVat}: {(tot * (1 + vat / 100)).toFixed(2)} €</span>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 

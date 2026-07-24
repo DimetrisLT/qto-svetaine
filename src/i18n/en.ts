@@ -267,7 +267,7 @@ const en: typeof lt = {
     thPerVol: 'ft³/pc', addRow: 'Add row', includeN: 'Add', selectedOf: 'selected', cancelBtn: 'Cancel', suspiciousRow: 'Suspicious row – unrealistic quantity', excludeSuspicious: 'Uncheck all suspicious rows',
     editTitle: 'Edit item',
     fLength: 'Length', fHeight: 'Height', fThickness: 'Thickness', fWidth: 'Width',
-    fUnit: 'Unit', fNote: 'Note', fPrice: 'Unit price (€)', fTotal: 'Total', save: 'Save', estimateTotal: 'Estimate total (excl. VAT)', estimateHint: 'based on entered unit prices (edit item ✎)', rememberPrice: 'Remember price in library', priceRemembered: 'Saved – will be suggested in other projects',
+    fUnit: 'Unit', fNote: 'Note', fPrice: 'Unit price (€)', fTotal: 'Total', save: 'Save', estimateTotal: 'Estimate total (excl. VAT)', estimateHint: 'based on entered unit prices (edit item ✎)', rememberPrice: 'Remember price in library', priceRemembered: 'Saved – will be suggested in other projects', vatRate: 'VAT', vatAmount: 'VAT amount', totalWithVat: 'TOTAL (incl. VAT)', byDiscipline: 'By discipline',
     scTitle: 'Self-check results',
     scGeom: 'Geometry check', scLogic: 'Logic check', scFull: 'Completeness check',
     scOk: 'All good',

@@ -266,7 +266,7 @@ const lt = {
     thPerVol: 'm³/vnt.', addRow: 'Pridėti eilutę', includeN: 'Įtraukti', selectedOf: 'pažymėta', cancelBtn: 'Atšaukti', suspiciousRow: 'Įtartina eilutė – nerealus kiekis', excludeSuspicious: 'Atžymėti visas įtartinas eilutes',
     editTitle: 'Redaguoti poziciją',
     fLength: 'Ilgis', fHeight: 'Aukštis', fThickness: 'Storis', fWidth: 'Plotis',
-    fUnit: 'Vienetas', fNote: 'Pastaba', fPrice: 'Vieneto kaina (€)', fTotal: 'Suma', save: 'Išsaugoti', estimateTotal: 'Sąmatos suma (be PVM)', estimateHint: 'pagal įvestas vieneto kainas (redaguokite poziciją ✎)', rememberPrice: 'Įsiminti kainą bibliotekoje', priceRemembered: 'Įsiminta – bus siūloma kituose projektuose',
+    fUnit: 'Vienetas', fNote: 'Pastaba', fPrice: 'Vieneto kaina (€)', fTotal: 'Suma', save: 'Išsaugoti', estimateTotal: 'Sąmatos suma (be PVM)', estimateHint: 'pagal įvestas vieneto kainas (redaguokite poziciją ✎)', rememberPrice: 'Įsiminti kainą bibliotekoje', priceRemembered: 'Įsiminta – bus siūloma kituose projektuose', vatRate: 'PVM', vatAmount: 'PVM suma', totalWithVat: 'VISO (su PVM)', byDiscipline: 'Pagal disciplinas',
     scTitle: 'Savikontrolės rezultatai',
     scGeom: 'Geometrinis patikrinimas', scLogic: 'Logikos patikrinimas', scFull: 'Pilnumo patikrinimas',
     scOk: 'Viskas tvarkoje',

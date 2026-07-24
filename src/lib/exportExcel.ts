@@ -1,6 +1,6 @@
 // Excel (XLSX) eksportas ir CSV kopijavimas
 import * as XLSX from 'xlsx';
-import { CATEGORY_ORDER, ORIGIN_INFO, categoryLabel, originLabel, type CheckResult, type QtoItem } from '@/types/qto';
+import { CATEGORY_ORDER, ORIGIN_INFO, categoryLabel, disciplineLabel, originLabel, type CheckResult, type QtoItem } from '@/types/qto';
 import { buildZiniarastis } from '@/lib/works';
 import { round } from '@/lib/format';
 import { L } from '@/i18n/store';
@@ -84,7 +84,12 @@ function ziniarastisRows(items: QtoItem[], sys: UnitSystem) {
       rows.push([`${group.code}.${i + 1}`, r.name, convertUnitLabel(r.unit, sys), round(convertValue(r.qty, r.unit, sys), 2), price ?? '', sum, ORIGIN_INFO[r.origin] ? originLabel(r.origin) : '', r.sources.join(', ')]);
     });
   }
-  if (anyPrice) rows.push(['', L({ lt: 'VISO (be PVM)', en: 'TOTAL (excl. VAT)' }), '', '', '', round(total, 2), '', '']);
+  if (anyPrice) {
+    const vat = getVatRate();
+    rows.push(['', L({ lt: 'VISO (be PVM)', en: 'TOTAL (excl. VAT)' }), '', '', '', round(total, 2), '', '']);
+    rows.push(['', L({ lt: `PVM (${vat} %)`, en: `VAT (${vat} %)` }), '', '', '', round(total * vat / 100, 2), '', '']);
+    rows.push(['', L({ lt: 'VISO (su PVM)', en: 'TOTAL (incl. VAT)' }), '', '', '', round(total * (1 + vat / 100), 2), '', '']);
+  }
   return rows;
 }
 
@@ -119,6 +124,26 @@ export function totalEstimate(items: QtoItem[]): number {
   return items.reduce((s, i) => s + (i.price ?? 0) * effectiveQty(i), 0);
 }
 
+/** PVM tarifas (vartotojo, localStorage; numatyta 21 %) */
+export function getVatRate(): number {
+  const v = Number(localStorage.getItem('qto-vat') ?? '21');
+  return Number.isFinite(v) && v >= 0 && v <= 100 ? v : 21;
+}
+export function setVatRate(v: number): void {
+  localStorage.setItem('qto-vat', String(v));
+}
+
+/** Sąmatos sumos pagal disciplinas */
+export function estimateByDiscipline(items: QtoItem[]): Array<{ code: string; total: number }> {
+  const m = new Map<string, number>();
+  for (const i of items) {
+    if (i.price === undefined) continue;
+    const d = i.discipline ?? 'Kita';
+    m.set(d, (m.get(d) ?? 0) + i.price * effectiveQty(i));
+  }
+  return [...m.entries()].map(([code, total]) => ({ code, total })).sort((a, b) => b.total - a.total);
+}
+
 export function exportToExcel(items: QtoItem[], checks: CheckResult[], fileBase?: string, opts?: Partial<ExportSheetOpts>) {
   const o: ExportSheetOpts = { schedule: true, summary: true, details: true, checks: true, ...opts };
   const sys = getUnitSystem();
@@ -130,7 +155,19 @@ export function exportToExcel(items: QtoItem[], checks: CheckResult[], fileBase?
     XLSX.utils.book_append_sheet(wb, s0, L({ lt: 'Žiniaraštis', en: 'Schedule' }));
   }
   if (o.summary) {
-    const s1 = XLSX.utils.aoa_to_sheet(summaryRows(items, sys));
+    const sRows = summaryRows(items, sys);
+    const byD = estimateByDiscipline(items).filter((d) => d.total > 0);
+    if (byD.length > 0) {
+      const vat = getVatRate();
+      const tot = byD.reduce((s, d) => s + d.total, 0);
+      sRows.push([]);
+      sRows.push([L({ lt: 'Sąmata pagal disciplinas', en: 'Estimate by discipline' })]);
+      for (const d of byD) sRows.push([disciplineLabel(d.code), '', '', '', '', '', round(d.total, 2)]);
+      sRows.push([L({ lt: 'VISO (be PVM)', en: 'TOTAL (excl. VAT)' }), '', '', '', '', '', round(tot, 2)]);
+      sRows.push([L({ lt: `PVM (${vat} %)`, en: `VAT (${vat} %)` }), '', '', '', '', '', round(tot * vat / 100, 2)]);
+      sRows.push([L({ lt: 'VISO (su PVM)', en: 'TOTAL (incl. VAT)' }), '', '', '', '', '', round(tot * (1 + vat / 100), 2)]);
+    }
+    const s1 = XLSX.utils.aoa_to_sheet(sRows);
     s1['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, s1, L({ lt: 'Santrauka', en: 'Summary' }));
   }
